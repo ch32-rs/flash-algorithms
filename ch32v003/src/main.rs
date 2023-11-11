@@ -3,9 +3,8 @@
 
 use panic_halt as _;
 
-use flash_algorithm::*;
-// use rtt_target::{rprintln, rtt_init_print};
 use ch32v0::ch32v003 as pac;
+use flash_algorithm::*;
 
 const KEY1: u32 = 0x45670123;
 const KEY2: u32 = 0xCDEF89AB;
@@ -27,9 +26,6 @@ algorithm!(Algorithm, {
 /// Refer: CH32V003EVT.zip:EXAM/FLASH/FLASH_Program
 impl FlashAlgorithm for Algorithm {
     fn new(_address: u32, _clock: u32, _function: Function) -> Result<Self, ErrorCode> {
-        //rtt_init_print!();
-        //rprintln!("Init");
-        // TODO: Add setup code for the flash algorithm.
         unsafe {
             // unlock normal program mode
             let rb = &*pac::FLASH::PTR;
@@ -144,6 +140,7 @@ impl Drop for Algorithm {
         unsafe {
             let rb = &*pac::FLASH::PTR;
 
+            // lock FLASH again
             rb.ctlr.modify(|_, w| w.lock().set_bit().flock().set_bit());
         }
     }
