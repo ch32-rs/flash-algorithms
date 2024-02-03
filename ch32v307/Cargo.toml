@@ -1,0 +1,49 @@
+[package]
+authors = ["Marek Vrbka <marekvrbka@gmail.com>"]
+edition = "2021"
+readme = "README.md"
+name = "ch32v307"
+version = "0.1.0"
+
+[dependencies]
+ch32v3 = { version = "0.1.6", features = ["ch32v30x"] }
+flash-algorithm = { version = "0.4.0", default-features = false }
+panic-halt = "0.2.0"
+
+# this lets you use `cargo fix`!
+[[bin]]
+name = "ch32v307"
+test = false
+bench = false
+
+[profile.dev]
+codegen-units = 1
+debug = 2
+debug-assertions = true
+incremental = false
+opt-level = 3
+overflow-checks = true
+
+[profile.release]
+codegen-units = 1
+debug = 2
+debug-assertions = false
+incremental = false
+lto = "fat"
+opt-level = 's'
+overflow-checks = false
+
+# do not optimize proc-macro crates = faster builds from scratch
+[profile.dev.build-override]
+codegen-units = 8
+debug = false
+debug-assertions = false
+opt-level = 0
+overflow-checks = false
+
+[profile.release.build-override]
+codegen-units = 8
+debug = false
+debug-assertions = false
+opt-level = 0
+overflow-checks = false
