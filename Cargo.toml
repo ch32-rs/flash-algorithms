@@ -1,0 +1,33 @@
+[workspace]
+resolver = "2"
+members = ["algos/*", "xtask"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ch32-rs/flash-algorithms"
+authors = [
+    "Andelf <andelf@gmail.com>",
+    "Aaron Qian <aq1018@gmail.com>",
+]
+
+[workspace.dependencies]
+ch32-metapac = { git = "https://github.com/ch32-rs/ch32-metapac.git", default-features = false }
+flash-algorithm = { version = "0.6", default-features = false }
+panic-halt = "1"
+
+[profile.release]
+codegen-units = 1
+debug = 2
+debug-assertions = false
+incremental = false
+lto = "fat"
+opt-level = "s"
+overflow-checks = false
+
+[profile.release.build-override]
+codegen-units = 8
+debug = false
+debug-assertions = false
+opt-level = 0
+overflow-checks = false
