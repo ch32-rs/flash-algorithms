@@ -20,9 +20,14 @@ modelled in ch32-metapac:
 
 Each crate produces three flash-algorithm binaries:
 
-- `user`   — user flash region
-- `system` — boot/system flash region
-- `ob`     — option bytes region (writable as free storage)
+- `usr` — user flash region
+- `sys` — boot/system flash region
+- `opt` — option bytes region (writable as free storage)
+
+A fourth read-only region per chip — `vnd` — covers ESIG (UID + flash
+capacity register) and any factory-locked vendor/manufacturer configuration
+word. Exposed in the generated YAML as read-only memory so probe-rs can read
+it but won't try to program or erase.
 
 ## Generating target YAMLs
 
