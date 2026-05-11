@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["algos/*", "xtask"]
+members = ["algos/*", "build-helper"]
 
 [workspace.package]
 edition = "2024"
@@ -13,7 +13,7 @@ authors = [
 
 [workspace.dependencies]
 ch32-metapac = { git = "https://github.com/ch32-rs/ch32-metapac.git", default-features = false }
-flash-algorithm = { version = "0.6", default-features = false }
+flash-algorithm = { version = "0.7", default-features = false, features = ["erase-chip", "panic-handler"] }
 panic-halt = "1"
 
 [profile.release]

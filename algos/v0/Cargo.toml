@@ -1,0 +1,38 @@
+[package]
+name = "flash-algo-v0"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+build = "build.rs"
+
+[lib]
+name = "flash_algo_v0"
+
+[[bin]]
+name = "usr"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "sys"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "opt"
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+ch32-metapac = { workspace = true, features = ["pac", "ch32v003f4p6"] }
+flash-algorithm = { workspace = true }
+flash-algo-common = { path = "../common" }
+
+[build-dependencies]
+flash-algo-build = { path = "../../build-helper" }

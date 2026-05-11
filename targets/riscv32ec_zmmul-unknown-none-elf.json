@@ -11,6 +11,7 @@
   "linker-flavor": "gnu-lld",
   "llvm-target": "riscv32",
   "llvm-abiname": "ilp32e",
+  "abi": "ilp32e",
   "max-atomic-width": 32,
   "panic-strategy": "abort",
   "relocation-model": "static",

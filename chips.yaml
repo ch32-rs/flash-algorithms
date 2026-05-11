@@ -1,31 +1,18 @@
-# chips.yaml — complement to ch32-metapac for flash-algorithm generation.
+# Per-flash-version data ch32-metapac doesn't expose. Each top-level key maps
+# 1:1 to an algo crate under algos/.
 #
-# Per-flash-version defaults that ch32-metapac doesn't expose. Sources cited
-# inline. Each family key maps 1:1 to an algo crate name under algos/.
+#   page_size  erase unit (also probe-rs ProgramPage chunk size)
+#   word_size  BUFLOAD chunk pushed to the IP's internal write buffer
+#   sys / opt  {addr, size} for system flash and option bytes regions
+#   vnd        factory-locked read-only region; always covers ESIG
 #
-# Schema:
-#   target — Rust target. Either a built-in triple ("riscv32imac-...") or a
-#            relative path to a target-spec JSON (requires nightly + build-std).
-#   sys    — list of {addr, size} for system/boot flash regions. Most chips
-#            have one entry; v1 has two (storage 1 + storage 2 around the
-#            vendor configuration word).
-#   opt    — {addr, size} for the option bytes region. Whole region is
-#            writable; the structured RDPR/USER/Data*/WRPR* fields occupy only
-#            the first ~16 B, the rest is free storage.
-#   vnd    — {addr, size} for the factory-locked read-only "vendor" region.
-#            ESIG (0x1FFFF7E0, 32 B — UID + flash-capacity register) is
-#            present on every chip; x0/l1 have a larger 256 B manufacturer/
-#            vendor configuration region that encloses ESIG. Emitted as
-#            read-only Nvm in the target YAML.
-#
-# User flash (`usr`) is not modeled here — it comes from ch32-metapac METADATA
-# directly, including split-flash banks for chips that have them.
+# User flash (`usr`) comes from ch32-metapac METADATA, not this file.
 
 families:
-
-  # CH32V003, CH641 — qingke-v2a. Source: CH32V003RM v1.9 §15, §16.
+  # CH32V003, CH641. Source: CH32V003RM v1.9 §15, §16.
   v0:
-    target: targets/riscv32ec-unknown-none-elf.json
+    page_size: 64
+    word_size: 4
     sys:
       - addr: 0x1FFFF000
         size: 0x780 # 1920 B
@@ -34,12 +21,13 @@ families:
       size: 0x40 # 64 B
     vnd:
       addr: 0x1FFFF7E0
-      size: 0x20 # 32 B — ESIG (FLACAP + UID1/2/3)
+      size: 0x20 # 32 B — ESIG (FLACAP + UID)
 
-  # CH32V002/4/5/6/7, CH32M007 — qingke-v2c (RV32EC + Zmmul: multiply, no
-  # divide). Source: CH32V00XRM §18, §19.
+  # CH32V002/4/5/6/7, CH32M007 — RV32EC + Zmmul. Source: CH32V00XRM §18, §19.
+  # TODO: verify page_size/word_size — metapac says 64, tinyboot says 256.
   v00x:
-    target: targets/riscv32ec_zmmul-unknown-none-elf.json
+    page_size: 64
+    word_size: 4
     sys:
       - addr: 0x1FFF0000
         size: 0xD00 # 3328 B
@@ -50,11 +38,12 @@ families:
       addr: 0x1FFFF7E0
       size: 0x20 # 32 B — ESIG
 
-  # CH32V103 — qingke-v3. Source: CH32x103 RM v2.0 §23, §24. System is *split*
-  # around the OB and a vendor configuration word at 0x1FFFF880-0x1FFFF8FF
-  # (128 B, factory locked) — not exposed.
+  # CH32V103. Source: CH32x103 RM v2.0 §23, §24. System is *split* around the
+  # OB and a locked vendor word at 0x1FFFF880 (128 B, not exposed).
+  # TODO: verify page_size/word_size — tinyboot says 128/16, metapac says 256.
   v1:
-    target: riscv32imac-unknown-none-elf
+    page_size: 128
+    word_size: 16
     sys:
       - addr: 0x1FFFF000
         size: 0x800 # 2048 B — storage 1
@@ -67,10 +56,11 @@ families:
       addr: 0x1FFFF7E0
       size: 0x20 # 32 B — ESIG
 
-  # CH32V20x — qingke-v4b/v4c. Shares flash IP (flash_v3) with v3 below; split
-  # only for target triple. Source: CH32F/V20x_V30x_V31x RM v2.5 §31, §32.
+  # CH32V20x. Shares flash IP (flash_v3) with v3; split only for target
+  # triple. Source: CH32F/V20x_V30x_V31x RM v2.5 §31, §32.
   v2:
-    target: riscv32imac-unknown-none-elf
+    page_size: 256
+    word_size: 4
     sys:
       - addr: 0x1FFF8000
         size: 0x7000 # 28 KB
@@ -83,7 +73,8 @@ families:
 
   # CH32V30x — qingke-v4f (hardware float). Same flash layout as v2.
   v3:
-    target: riscv32imacf-unknown-none-elf
+    page_size: 256
+    word_size: 4
     sys:
       - addr: 0x1FFF8000
         size: 0x7000 # 28 KB
@@ -94,11 +85,11 @@ families:
       addr: 0x1FFFF7E0
       size: 0x20 # 32 B — ESIG
 
-  # CH32X0xx, CH643 — qingke-v4c. Source: CH32X035RM §19, §20.
-  # Manufacturer configuration word at 0x1FFFF700 (256 B) encloses ESIG at
-  # 0x1FFFF7E0, so we expose the single covering region.
+  # CH32X0xx, CH643. Source: CH32X035RM §19, §20. vnd covers the 256 B
+  # manufacturer configuration word that encloses ESIG.
   x0:
-    target: riscv32imac-unknown-none-elf
+    page_size: 256
+    word_size: 4
     sys:
       - addr: 0x1FFF0000
         size: 0xD00 # 3328 B
@@ -109,10 +100,10 @@ families:
       addr: 0x1FFFF700
       size: 0x100 # 256 B — manufacturer configuration word (incl. ESIG)
 
-  # CH32L103 — qingke-v4c. Source: CH32L103RM §24, §27. Vendor configuration
-  # words at 0x1FFFF700 (256 B) enclose ESIG at 0x1FFFF7E0.
+  # CH32L103. Source: CH32L103RM §24, §27. Same vnd shape as x0.
   l1:
-    target: riscv32imac-unknown-none-elf
+    page_size: 256
+    word_size: 4
     sys:
       - addr: 0x1FFF0000
         size: 0xD00 # 3328 B
