@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["algos/*"]
+members = ["algos/*", "xtask"]
+default-members = ["xtask"]
 
 [workspace.package]
 edition = "2024"
@@ -16,10 +17,6 @@ authors = [
 ch32-metapac = { path = "../ch32-data/build/ch32-metapac", default-features = false, features = ["metadata"] }
 flash-algorithm = { version = "0.7", default-features = false, features = ["erase-chip", "panic-handler"] }
 panic-halt = "1"
-
-[patch.crates-io]
-# Match the locally-installed probe-rs schema (crates.io 0.31.0 has diverged).
-probe-rs-target = { path = "../probe-rs/probe-rs-target" }
 
 [profile.release]
 codegen-units = 1
