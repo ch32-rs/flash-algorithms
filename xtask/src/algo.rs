@@ -7,6 +7,7 @@ use std::process::Command;
 pub struct AlgoBlob {
     /// Flash IP version (matches `FLASH.registers.version`).
     pub silicon: String,
+    pub arch: String,
     /// "usr" | "sys" | "ob".
     pub region_kind: String,
     pub template: RawFlashAlgorithm,
@@ -35,7 +36,7 @@ pub fn build_all(workspace_root: &Path) -> Result<Vec<AlgoBlob>> {
     Ok(out)
 }
 
-fn build_crate(crate_dir: &Path, silicon: &str) -> Result<Vec<AlgoBlob>> {
+fn build_crate(crate_dir: &Path, crate_name: &str) -> Result<Vec<AlgoBlob>> {
     eprintln!("    cargo build --release ({})", crate_dir.display());
     let status = Command::new("cargo")
         .arg("+nightly")
@@ -49,6 +50,9 @@ fn build_crate(crate_dir: &Path, silicon: &str) -> Result<Vec<AlgoBlob>> {
     }
 
     let triple = read_target_triple(crate_dir)?;
+    let arch = arch_from_triple(&triple)
+        .ok_or_else(|| anyhow!("unknown CPU arch in triple `{}`", triple))?;
+    let silicon = silicon_for_crate(crate_name);
     let bin_dir = crate_dir.join("../../target").join(&triple).join("release");
 
     let mut out = Vec::new();
@@ -70,11 +74,29 @@ fn build_crate(crate_dir: &Path, silicon: &str) -> Result<Vec<AlgoBlob>> {
             extract_algo(&elf).with_context(|| format!("parsing ELF {}", elf_path.display()))?;
         out.push(AlgoBlob {
             silicon: silicon.to_string(),
+            arch: arch.to_string(),
             region_kind: stem,
             template,
         });
     }
     Ok(out)
+}
+
+fn silicon_for_crate(name: &str) -> &str {
+    match name {
+        "f1" => "v1",
+        n => n,
+    }
+}
+
+fn arch_from_triple(triple: &str) -> Option<&'static str> {
+    if triple.starts_with("riscv") {
+        Some("riscv")
+    } else if triple.starts_with("thumb") || triple.starts_with("arm") {
+        Some("arm")
+    } else {
+        None
+    }
 }
 
 fn read_target_triple(crate_dir: &Path) -> Result<String> {

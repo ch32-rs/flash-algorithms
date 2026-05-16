@@ -1,9 +1,9 @@
 use crate::algo::AlgoBlob;
 use crate::chip::{Access, Chip, MemoryRegion, Variant};
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use probe_rs_target::{
-    Chip as PrChip, ChipFamily, Core as PrCore, CoreAccessOptions, CoreType, MemoryAccess,
-    MemoryRegion as PrMemoryRegion, NvmRegion, RamRegion, RiscvCoreAccessOptions,
+    ArmCoreAccessOptions, Chip as PrChip, ChipFamily, Core as PrCore, CoreAccessOptions, CoreType,
+    MemoryAccess, MemoryRegion as PrMemoryRegion, NvmRegion, RamRegion, RiscvCoreAccessOptions,
     SectorDescription, TargetDescriptionSource,
     chip_detection::{ChipDetectionMethod, ObRefinement, WchLinkDetection},
 };
@@ -18,27 +18,38 @@ pub struct EmitStats {
     pub chips_skipped: usize,
 }
 
-/// Group chips by silicon (flash IP version) and emit one YAML per group.
-/// Silicon → algo blob is 1:1, so every chip in a file shares the same algo.
+/// Group chips by (silicon, arch) and emit one YAML per group. Splitting by
+/// arch separates `flash_v1` consumers into V1 (RISC-V) and F1 (Cortex-M3)
+/// families, each with the right CPU-built algo blob.
 pub fn emit_all(chips: &[Chip], algos: &[AlgoBlob], out_dir: &Path) -> Result<EmitStats> {
-    let mut groups: BTreeMap<String, Vec<&Chip>> = BTreeMap::new();
+    let mut groups: BTreeMap<(String, String), Vec<&Chip>> = BTreeMap::new();
     let mut stats = EmitStats::default();
 
     for chip in chips {
-        match chip.flash_version() {
-            Some(silicon) => groups.entry(silicon.to_string()).or_default().push(chip),
-            None => {
+        match (chip.flash_version(), chip.arch()) {
+            (Some(silicon), Some(arch)) => {
+                groups
+                    .entry((silicon.to_string(), arch.to_string()))
+                    .or_default()
+                    .push(chip);
+            }
+            (None, _) => {
                 eprintln!("    skip {} (no FLASH peripheral version)", chip.name);
+                stats.chips_skipped += 1;
+            }
+            (_, None) => {
+                eprintln!("    skip {} (no `arch` on first core)", chip.name);
                 stats.chips_skipped += 1;
             }
         }
     }
 
-    for (silicon, silicon_chips) in groups {
-        if !algos.iter().any(|a| a.silicon == silicon) {
+    for ((silicon, arch), silicon_chips) in groups {
+        if !algos.iter().any(|a| a.silicon == silicon && a.arch == arch) {
             eprintln!(
-                "    skip silicon {} ({} chips: no algo blob built)",
+                "    skip silicon {}/{} ({} chips: no algo blob built)",
                 silicon,
+                arch,
                 silicon_chips.len()
             );
             stats.chips_skipped += silicon_chips.len();
@@ -55,15 +66,16 @@ pub fn emit_all(chips: &[Chip], algos: &[AlgoBlob], out_dir: &Path) -> Result<Em
         let file_stem = format!("{}_Series", joined);
 
         let (chip_family, variant_count) =
-            build_family(&display_name, &silicon_chips, &silicon, algos)?;
+            build_family(&display_name, &silicon_chips, &silicon, &arch, algos)?;
         let yaml = serialize_yaml(&chip_family)?;
         let path = out_dir.join(format!("{}.yaml", file_stem));
         std::fs::write(&path, yaml).with_context(|| format!("writing {}", path.display()))?;
         eprintln!(
-            "    wrote {} ({} variants, silicon {})",
+            "    wrote {} ({} variants, silicon {}/{})",
             path.file_name().unwrap().to_string_lossy(),
             variant_count,
             silicon,
+            arch,
         );
         stats.families_written += 1;
         stats.variants_written += variant_count;
@@ -100,17 +112,29 @@ fn build_family(
     display_name: &str,
     chips: &[&Chip],
     silicon: &str,
+    arch: &str,
     algos: &[AlgoBlob],
 ) -> Result<(ChipFamily, usize)> {
     let core_name = "main".to_string();
+    let (core_type, core_access_options) = match arch {
+        "riscv" => (
+            CoreType::Riscv,
+            CoreAccessOptions::Riscv(RiscvCoreAccessOptions {
+                hart_id: Some(0),
+                jtag_tap: None,
+                mem_ap: None,
+            }),
+        ),
+        "arm" => (
+            CoreType::Armv7m,
+            CoreAccessOptions::Arm(ArmCoreAccessOptions::default()),
+        ),
+        other => bail!("unsupported arch `{}`", other),
+    };
     let core = PrCore {
         name: core_name.clone(),
-        core_type: CoreType::Riscv,
-        core_access_options: CoreAccessOptions::Riscv(RiscvCoreAccessOptions {
-            hart_id: Some(0),
-            jtag_tap: None,
-            mem_ap: None,
-        }),
+        core_type,
+        core_access_options,
     };
 
     let mut variants: Vec<PrChip> = Vec::new();
@@ -142,6 +166,7 @@ fn build_family(
                 &variant,
                 &core_name,
                 silicon,
+                arch,
                 algos,
                 &mut variant_algo_uses,
                 &mut algo_kind,
@@ -208,8 +233,15 @@ fn build_family(
 
         let blob = algos
             .iter()
-            .find(|a| a.silicon == silicon && a.region_kind == *kind)
-            .ok_or_else(|| anyhow!("no algo blob for silicon {} kind {}", silicon, kind))?;
+            .find(|a| a.silicon == silicon && a.arch == arch && a.region_kind == *kind)
+            .ok_or_else(|| {
+                anyhow!(
+                    "no algo blob for silicon {} arch {} kind {}",
+                    silicon,
+                    arch,
+                    kind
+                )
+            })?;
         let mut algo = blob.template.clone();
         algo.name = algo_name.clone();
         algo.description = algo_name.clone();
@@ -248,6 +280,7 @@ fn build_variant(
     variant: &Variant,
     core_name: &str,
     silicon: &str,
+    arch: &str,
     algos: &[AlgoBlob],
     algo_uses: &mut BTreeMap<String, Vec<Range<u64>>>,
     algo_kind: &mut BTreeMap<String, String>,
@@ -288,7 +321,7 @@ fn build_variant(
                     && let Some(kind) = region_kind(&region.name)
                     && algos
                         .iter()
-                        .any(|a| a.silicon == silicon && a.region_kind == kind)
+                        .any(|a| a.silicon == silicon && a.arch == arch && a.region_kind == kind)
                 {
                     // Name by kind so split-SYS chips (v1: SYS_1 +
                     // SYS_2) share one entry instead of two copies.
