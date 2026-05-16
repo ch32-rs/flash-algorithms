@@ -1,0 +1,12 @@
+[build]
+target = "../../targets/riscv32ec_zmmul-unknown-none-elf.json"
+
+[unstable]
+build-std = ["core", "compiler_builtins"]
+json-target-spec = true
+
+[target.'cfg(all(target_arch = "riscv32", target_os = "none"))']
+rustflags = [
+  "-C", "link-arg=-Tmemory.x",
+  "-C", "link-arg=--defsym=ALGO_PLACEMENT_START_ADDRESS=0x20000020",
+]
