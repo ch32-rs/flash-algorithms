@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+members = ["algos/*"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ch32-rs/flash-algorithms"
+authors = [
+    "Andelf <andelf@gmail.com>",
+    "Aaron Qian <aq1018@gmail.com>",
+]
+
+[workspace.dependencies]
+# Local path until ch32-data#36 merges.
+ch32-metapac = { path = "../ch32-data/build/ch32-metapac", default-features = false, features = ["metadata"] }
+flash-algorithm = { version = "0.7", default-features = false, features = ["erase-chip", "panic-handler"] }
+panic-halt = "1"
+
+[patch.crates-io]
+# Match the locally-installed probe-rs schema (crates.io 0.31.0 has diverged).
+probe-rs-target = { path = "../probe-rs/probe-rs-target" }
+
+[profile.release]
+codegen-units = 1
+debug = 2
+debug-assertions = false
+incremental = false
+lto = "fat"
+opt-level = "s"
+overflow-checks = false
+
+[profile.release.build-override]
+codegen-units = 8
+debug = false
+debug-assertions = false
+opt-level = 0
+overflow-checks = false
