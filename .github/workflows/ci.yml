@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  # Bump in lockstep with Cargo.toml when those interfaces change.
+  CH32_DATA_REPO: ch32-rs/ch32-data
+  CH32_DATA_REF: 6f94309ec3bc7480b9686c3119284df833050c54
+
+jobs:
+  fmt-clippy:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: flash-algorithms
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ env.CH32_DATA_REPO }}
+          ref: ${{ env.CH32_DATA_REF }}
+          path: ch32-data
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            flash-algorithms
+            ch32-data
+          shared-key: fmt-clippy
+      - name: generate ch32-metapac
+        working-directory: ch32-data
+        run: ./d gen
+      - name: cargo fmt --check
+        working-directory: flash-algorithms
+        # Explicit `-p` list (not `--all`) so fmt skips path deps like `ch32-metapac`.
+        run: |
+          cargo fmt --check \
+            -p xtask \
+            -p flash-algo-common \
+            -p flash-algo-v0 \
+            -p flash-algo-v00x \
+            -p flash-algo-v1 \
+            -p flash-algo-v3 \
+            -p flash-algo-l1 \
+            -p flash-algo-x0
+      - name: cargo clippy -p xtask
+        working-directory: flash-algorithms
+        run: cargo clippy -p xtask -- -D warnings
+
+  algos:
+    name: algos/${{ matrix.crate }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [v0, v00x, v1, v3, l1, x0]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: flash-algorithms
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ env.CH32_DATA_REPO }}
+          ref: ${{ env.CH32_DATA_REF }}
+          path: ch32-data
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            flash-algorithms
+            ch32-data
+          key: ${{ matrix.crate }}
+      - name: generate ch32-metapac
+        working-directory: ch32-data
+        run: ./d gen
+      - name: cargo build --release
+        working-directory: flash-algorithms/algos/${{ matrix.crate }}
+        run: cargo build --release
+
+  render:
+    name: render YAMLs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: flash-algorithms
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ env.CH32_DATA_REPO }}
+          ref: ${{ env.CH32_DATA_REF }}
+          path: ch32-data
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            flash-algorithms
+            ch32-data
+          shared-key: render
+      - name: generate ch32-metapac
+        working-directory: ch32-data
+        run: ./d gen
+      - name: cargo run -p xtask
+        working-directory: flash-algorithms
+        run: cargo run -p xtask
