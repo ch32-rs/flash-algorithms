@@ -68,6 +68,8 @@ pub struct Access {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Core {
     #[serde(default)]
+    pub arch: Option<String>,
+    #[serde(default)]
     pub peripherals: Vec<Peripheral>,
 }
 
@@ -108,6 +110,10 @@ impl Chip {
             }
         }
         None
+    }
+
+    pub fn arch(&self) -> Option<&str> {
+        self.cores.first().and_then(|c| c.arch.as_deref())
     }
 
     pub fn variants(&self) -> Vec<Variant> {
