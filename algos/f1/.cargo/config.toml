@@ -1,0 +1,11 @@
+[build]
+target = "thumbv7m-none-eabi"
+
+[unstable]
+build-std = ["core", "compiler_builtins"]
+
+[target.'cfg(all(target_arch = "arm", target_os = "none"))']
+rustflags = [
+  "-C", "link-arg=-Tmemory.x",
+  "-C", "link-arg=--defsym=ALGO_PLACEMENT_START_ADDRESS=0x20000020",
+]

@@ -1,0 +1,37 @@
+[package]
+name = "flash-algo-f1"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lib]
+name = "flash_algo_f1"
+
+[[bin]]
+name = "usr"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "sys"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "ob"
+test = false
+doctest = false
+bench = false
+
+# F103 reuses the v1 flash IP but runs on a Cortex-M3 core; metapac can't
+# unify two chip features, so this crate duplicates v1's lib instead of
+# depending on `flash-algo-v1`.
+[dependencies]
+ch32-metapac = { workspace = true, features = ["pac", "ch32f103c8t6"] }
+flash-algorithm = { workspace = true }
+flash-algo-common = { path = "../common" }
