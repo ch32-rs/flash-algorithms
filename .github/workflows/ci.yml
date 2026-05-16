@@ -8,7 +8,7 @@ on:
 env:
   # Bump in lockstep with Cargo.toml when those interfaces change.
   CH32_DATA_REPO: ch32-rs/ch32-data
-  CH32_DATA_REF: 6f94309ec3bc7480b9686c3119284df833050c54
+  CH32_DATA_REF: 9b0d5c95573c99a9b07f305735fa48ad5745fb74
 
 jobs:
   fmt-clippy:
@@ -47,7 +47,8 @@ jobs:
             -p flash-algo-v1 \
             -p flash-algo-v3 \
             -p flash-algo-l1 \
-            -p flash-algo-x0
+            -p flash-algo-x0 \
+            -p flash-algo-f1
       - name: cargo clippy -p xtask
         working-directory: flash-algorithms
         run: cargo clippy -p xtask -- -D warnings
@@ -58,7 +59,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        crate: [v0, v00x, v1, v3, l1, x0]
+        crate: [v0, v00x, v1, v3, l1, x0, f1]
     steps:
       - uses: actions/checkout@v6
         with:

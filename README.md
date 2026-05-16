@@ -1,11 +1,13 @@
 # ch32-rs flash-algorithms
 
 [probe-rs](https://probe.rs) flash algorithms and target YAMLs for WCH's CH32
-RISC-V MCU families, built on top of [ch32-metapac](https://github.com/ch32-rs/ch32-metapac).
+MCU families, built on top of [ch32-metapac](https://github.com/ch32-rs/ch32-metapac).
 
 ## Coverage
 
-One algo crate per flash IP version.
+One algo crate per (flash IP version, CPU arch) pair. `f1` is a Cortex-M3
+build of the same `flash_v1` logic used by `v1` on Qingke RISC-V — Cargo can't
+unify two ch32-metapac chip features, so the lib is duplicated.
 
 | Crate        | Flash peripheral | Target triple                      | Chip families              |
 | ------------ | ---------------- | ---------------------------------- | -------------------------- |
@@ -15,6 +17,7 @@ One algo crate per flash IP version.
 | `algos/v3`   | `flash_v3`       | `riscv32imac-unknown-none-elf`     | CH32V2xx, CH32V3xx         |
 | `algos/x0`   | `flash_x0`       | `riscv32imac-unknown-none-elf`     | CH32X035/X033, CH643       |
 | `algos/l1`   | `flash_l1`       | `riscv32imac-unknown-none-elf`     | CH32L103                   |
+| `algos/f1`   | `flash_v1`       | `thumbv7m-none-eabi`               | CH32F103 (Cortex-M3)       |
 
 Each crate builds three binaries — `usr`, `sys`, `ob` — one per writable
 region. VND (vendor / ESIG) is read-only and not programmed.
