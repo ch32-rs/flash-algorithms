@@ -28,9 +28,7 @@ impl FlashAlgorithm for Algo {
     }
 
     fn erase_all(&mut self) -> Result<(), ErrorCode> {
-        options_erase();
-        options_program(OPT_BASE, &OB_DEFAULTS)?;
-        Ok(())
+        Err(ERR_NOT_SUPPORTED)
     }
 
     fn erase_sector(&mut self, _addr: u32) -> Result<(), ErrorCode> {
