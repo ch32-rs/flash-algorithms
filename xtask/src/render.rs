@@ -217,8 +217,9 @@ fn build_family(
             .ok_or_else(|| anyhow!("missing kind for algo {}", algo_name))?;
         let start = ranges.iter().map(|r| r.start).min().unwrap();
         let end = ranges.iter().map(|r| r.end).max().unwrap();
+        let blob_kind = if kind == "usr-legacy" { "usr" } else { kind };
         // Prefer Fast over Standard (v0/v1 OB only has Standard).
-        let template_region = find_template_region(chips, kind)?;
+        let template_region = find_template_region(chips, blob_kind)?;
         let (page_size, _) = template_region
             .modes
             .iter()
@@ -233,7 +234,7 @@ fn build_family(
 
         let blob = algos
             .iter()
-            .find(|a| a.silicon == silicon && a.arch == arch && a.region_kind == *kind)
+            .find(|a| a.silicon == silicon && a.arch == arch && a.region_kind == blob_kind)
             .ok_or_else(|| {
                 anyhow!(
                     "no algo blob for silicon {} arch {} kind {}",
@@ -332,8 +333,31 @@ fn build_variant(
                     if !variant_algos.contains(&algo_name) {
                         variant_algos.push(algo_name.clone());
                     }
-                    algo_uses.entry(algo_name.clone()).or_default().push(range);
+                    algo_uses
+                        .entry(algo_name.clone())
+                        .or_default()
+                        .push(range.clone());
                     algo_kind.insert(algo_name, kind.to_string());
+
+                    if kind == "usr" {
+                        let alias_range = 0u64..(range.end - range.start);
+                        memory_map.push(PrMemoryRegion::Nvm(NvmRegion {
+                            name: Some("USR_LEGACY".to_string()),
+                            range: alias_range.clone(),
+                            cores: vec![core_name.to_string()],
+                            is_alias: true,
+                            access: Some(access),
+                        }));
+                        let legacy_name = format!("ch32-{}-usr-legacy", silicon);
+                        if !variant_algos.contains(&legacy_name) {
+                            variant_algos.push(legacy_name.clone());
+                        }
+                        algo_uses
+                            .entry(legacy_name.clone())
+                            .or_default()
+                            .push(alias_range);
+                        algo_kind.insert(legacy_name, "usr-legacy".to_string());
+                    }
                 }
             }
             _ => {}

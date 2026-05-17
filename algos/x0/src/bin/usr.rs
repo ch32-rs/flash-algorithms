@@ -33,12 +33,12 @@ impl FlashAlgorithm for Algo {
     }
 
     fn erase_sector(&mut self, addr: u32) -> Result<(), ErrorCode> {
-        fast_page_erase(addr, USR_PAGE_SIZE);
+        fast_page_erase(addr | USR_BASE, USR_PAGE_SIZE);
         Ok(())
     }
 
     fn program_page(&mut self, addr: u32, data: &[u8]) -> Result<(), ErrorCode> {
-        fast_page_program(addr, data, USR_PAGE_SIZE, USR_LOAD);
+        fast_page_program(addr | USR_BASE, data, USR_PAGE_SIZE, USR_LOAD);
         Ok(())
     }
 }
