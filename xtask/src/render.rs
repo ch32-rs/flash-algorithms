@@ -283,9 +283,8 @@ fn build_variant(
                 }));
             }
             "flash" => {
-                // `is_alias` = "skip in `probe-rs erase` bulk path". SYS is
-                // unsafe (bootloader), VND is factory read-only.
-                let is_alias = !(region.name.starts_with("USR") || region.name == "OPT");
+                // `is_alias` = "skip in `probe-rs erase` bulk path". Only erase USR_*
+                let is_alias = !region.name.starts_with("USR");
                 memory_map.push(PrMemoryRegion::Nvm(NvmRegion {
                     name: Some(region.name.clone()),
                     range: range.clone(),

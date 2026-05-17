@@ -17,11 +17,6 @@ const OPT_STD: (u32, u32) = standard(region("OPT"));
 pub const OPT_ERASE_SIZE: u32 = OPT_STD.0;
 pub const OPT_WRITE_SIZE: u32 = OPT_STD.1;
 
-/// Without restoring defaults, post-erase OB leaves `RDPR != 0xA5` and
-/// read-protects the chip on next reset.
-pub const OB_DEFAULTS_LEN: usize = ob_default_writes_size();
-pub const OB_DEFAULTS: [u8; OB_DEFAULTS_LEN] = ob_default_writes();
-
 pub fn wait_busy() {
     while FLASH.statr().read().bsy() {}
     FLASH.statr().write(|w| w.set_eop(true));
