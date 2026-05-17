@@ -148,54 +148,60 @@ fn build_family(
             .as_ref()
             .map(|c| c.default.clone());
 
-        let refinement = build_ob_refinement(chip);
+        for package in &chip.packages {
+            let refinement = build_ob_refinement(chip, &package.name);
 
-        for variant in chip.variants() {
-            let is_default_variant = match (&variant.option, &default_opt) {
-                (Some(opt), Some(def)) => opt == def,
-                _ => true,
-            };
-            let suffix = if is_default_variant {
-                String::new()
-            } else {
-                format!("_{}", variant.option.as_deref().unwrap_or(""))
-            };
-            let target_name = format!("{}{}", chip.name, suffix);
+            for variant in chip.variants() {
+                let is_default_variant = match (&variant.option, &default_opt) {
+                    (Some(opt), Some(def)) => opt == def,
+                    _ => true,
+                };
+                let suffix = if is_default_variant {
+                    String::new()
+                } else {
+                    format!("_{}", variant.option.as_deref().unwrap_or(""))
+                };
+                let target_name = format!("{}{}", package.name, suffix);
 
-            let (memory_map, variant_algo_names) = build_variant(
-                &variant,
-                &core_name,
-                silicon,
-                arch,
-                algos,
-                &mut variant_algo_uses,
-                &mut algo_kind,
-            );
+                let (memory_map, variant_algo_names) = build_variant(
+                    &variant,
+                    &core_name,
+                    silicon,
+                    arch,
+                    algos,
+                    &mut variant_algo_uses,
+                    &mut algo_kind,
+                );
 
-            // Non-default splits share the same chip_id; OB refinement maps
-            // OB.USER bits 5-7 to the right variant post-attach.
-            if is_default_variant && let Some(id) = chip.device_id {
-                let mask = mask_for(id);
-                let group = detection_entries.entry(mask).or_default();
-                group.variants.insert(id & mask, target_name.clone());
-                if let Some(r) = &refinement {
-                    group.ob_refinement.insert(id & mask, r.clone());
+                // Non-default splits share the same chip_id; OB refinement maps
+                // OB.USER bits 5-7 to the right variant post-attach. device_id=0
+                // is ch32-data's "unknown" sentinel — drop those so multiple
+                // unknown-ID packages don't collide on key 0x0 in the variants
+                // IndexMap (last-write-wins would otherwise hide all but one).
+                if is_default_variant && package.device_id != 0 {
+                    let id = package.device_id;
+                    let mask = mask_for(id);
+                    let group = detection_entries.entry(mask).or_default();
+                    group.variants.insert(id & mask, target_name.clone());
+                    if let Some(r) = &refinement {
+                        group.ob_refinement.insert(id & mask, r.clone());
+                    }
                 }
-            }
 
-            variants.push(PrChip {
-                name: target_name,
-                part: None,
-                svd: None,
-                documentation: Default::default(),
-                package_variants: vec![],
-                cores: vec![core.clone()],
-                memory_map,
-                flash_algorithms: variant_algo_names,
-                rtt_scan_ranges: None,
-                jtag: None,
-                default_binary_format: None,
-            });
+                variants.push(PrChip {
+                    name: target_name,
+                    part: None,
+                    svd: None,
+                    documentation: Default::default(),
+                    package_variants: vec![],
+                    cores: vec![core.clone()],
+                    memory_map,
+                    flash_algorithms: variant_algo_names,
+                    rtt_scan_ranges: None,
+                    jtag: None,
+                    default_binary_format: None,
+                });
+            }
         }
     }
 
@@ -406,7 +412,7 @@ struct DetectionGroup {
 const OB_USER_ADDRESS: u64 = 0x1FFFF802;
 const RAM_CODE_MASK: u8 = 0xE0;
 
-fn build_ob_refinement(chip: &Chip) -> Option<ObRefinement> {
+fn build_ob_refinement(chip: &Chip, package_name: &str) -> Option<ObRefinement> {
     let cfg = chip.memory_ram_code_config.as_ref()?;
     let ob_version = chip.ob_version()?;
     let encoding = ram_code_encoding(ob_version)?;
@@ -420,7 +426,7 @@ fn build_ob_refinement(chip: &Chip) -> Option<ObRefinement> {
         } else {
             format!("_{}", option_name)
         };
-        let variant_name = format!("{}{}", chip.name, suffix);
+        let variant_name = format!("{}{}", package_name, suffix);
         variants.insert(raw << 5, variant_name);
     }
 

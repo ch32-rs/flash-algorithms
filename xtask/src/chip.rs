@@ -1,17 +1,26 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
+use std::collections::HashSet;
 use std::path::Path;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Chip {
     pub name: String,
+    #[serde(default)]
+    pub packages: Vec<Package>,
     pub memory: Vec<MemoryRegion>,
     pub cores: Vec<Core>,
     #[serde(default)]
     pub memory_ram_code_config: Option<RamCodeConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Package {
+    pub name: String,
     /// chip_id reported by WCH-Link `AttachChip`; drives `chip_detection`.
+    /// `0` means unknown — emitted by ch32-data when no ID is on record.
     #[serde(default)]
-    pub device_id: Option<u32>,
+    pub device_id: u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -204,5 +213,19 @@ pub fn load_all(dir: &Path) -> Result<Vec<Chip>> {
         out.push(chip);
     }
     out.sort_by(|a, b| a.name.cmp(&b.name));
+
+    // Drop per-package JSONs that duplicate a container chip's package entry.
+    // Container = any chip whose `packages` doesn't reduce to a single self-named
+    // entry (multi-package, or a single package with a different name).
+    let owned_by_container: HashSet<String> = out
+        .iter()
+        .filter(|c| c.packages.len() > 1 || c.packages.iter().any(|p| p.name != c.name))
+        .flat_map(|c| c.packages.iter().map(|p| p.name.clone()))
+        .collect();
+    out.retain(|c| {
+        let self_named_single = c.packages.len() == 1 && c.packages[0].name == c.name;
+        !(self_named_single && owned_by_container.contains(&c.name))
+    });
+
     Ok(out)
 }
