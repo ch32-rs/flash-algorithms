@@ -8,7 +8,7 @@ on:
 env:
   # Bump in lockstep with Cargo.toml when those interfaces change.
   CH32_DATA_REPO: ch32-rs/ch32-data
-  CH32_DATA_REF: 9b0d5c95573c99a9b07f305735fa48ad5745fb74
+  CH32_DATA_REF: 62145f5eef6d68962b6b428ef3a901e5383480e1
 
 jobs:
   fmt-clippy:
