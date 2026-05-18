@@ -294,6 +294,7 @@ fn build_variant(
 ) -> (Vec<PrMemoryRegion>, Vec<String>) {
     let mut memory_map = Vec::new();
     let mut variant_algos = Vec::new();
+    let mut legacy_emitted = false;
     let regions = merge_regions(&variant.memory);
     for region in &regions {
         let access = MemoryAccess {
@@ -329,13 +330,15 @@ fn build_variant(
                         .iter()
                         .any(|a| a.silicon == silicon && a.arch == arch && a.region_kind == kind)
                 {
-                    // Name by kind so split-SYS chips (v1: SYS_1 +
-                    // SYS_2) share one entry instead of two copies.
                     let suffix = match kind {
                         "ob" => "opt",
                         other => other,
                     };
-                    let algo_name = format!("ch32-{}-{}", silicon, suffix);
+                    let region_idx = split_name(&region.name)
+                        .1
+                        .map(|n| format!("-{}", n))
+                        .unwrap_or_default();
+                    let algo_name = format!("ch32-{}-{}{}", silicon, suffix, region_idx);
                     if !variant_algos.contains(&algo_name) {
                         variant_algos.push(algo_name.clone());
                     }
@@ -345,7 +348,8 @@ fn build_variant(
                         .push(range.clone());
                     algo_kind.insert(algo_name, kind.to_string());
 
-                    if kind == "usr" {
+                    if kind == "usr" && !legacy_emitted {
+                        legacy_emitted = true;
                         let alias_range = 0u64..(range.end - range.start);
                         memory_map.push(PrMemoryRegion::Nvm(NvmRegion {
                             name: Some("USR_LEGACY".to_string()),
