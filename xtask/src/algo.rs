@@ -281,8 +281,8 @@ fn read_flash_device(elf: &goblin::elf::Elf<'_>, buf: &[u8]) -> Result<FlashDevi
     let addr = addr.ok_or_else(|| anyhow!("ELF missing FlashDevice symbol"))?;
 
     let want = sym_size.max(160);
-    let bytes =
-        read_at(elf, buf, addr, want).ok_or_else(|| anyhow!("FlashDevice not in any LOAD segment"))?;
+    let bytes = read_at(elf, buf, addr, want)
+        .ok_or_else(|| anyhow!("FlashDevice not in any LOAD segment"))?;
     let mut sectors = Vec::new();
     let mut off = 160;
     while off + 8 <= bytes.len() {
