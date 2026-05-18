@@ -255,10 +255,19 @@ fn build_family(
         algo.default = true;
         algo.flash_properties.address_range = start..end;
         algo.flash_properties.page_size = page_size;
-        algo.flash_properties.sectors = vec![SectorDescription {
-            size: page_size as u64,
-            address: 0,
-        }];
+        // Keep the erase size declared by the `algorithm!` macro (SYS on
+        // flash_v3 uses 4 KB; USR/OB match page_size). Rebase to 0 — addresses
+        // in sectors[] are relative to address_range.start.
+        if algo.flash_properties.sectors.is_empty() {
+            algo.flash_properties.sectors = vec![SectorDescription {
+                size: page_size as u64,
+                address: 0,
+            }];
+        } else {
+            for s in algo.flash_properties.sectors.iter_mut() {
+                s.address = 0;
+            }
+        }
         // Drop EraseChip for SYS — defends against accidental bulk-erase
         // routing. USR's MER and OB's page-erase+defaults are fine.
         if kind == "sys" {
