@@ -18,7 +18,7 @@ algorithm!(Algo, {
     program_time_out: PROGRAM_TIMEOUT_MS,
     erase_time_out: ERASE_TIMEOUT_MS,
     sectors: [{
-        size: SYS_PAGE_SIZE,
+        size: SYS_ERASE_SIZE,
         address: SYS_BASE,
     }]
 });
@@ -34,12 +34,12 @@ impl FlashAlgorithm for Algo {
     }
 
     fn erase_sector(&mut self, addr: u32) -> Result<(), ErrorCode> {
-        fast_page_erase(addr, SYS_PAGE_SIZE);
+        boot_page_erase(addr);
         Ok(())
     }
 
     fn program_page(&mut self, addr: u32, data: &[u8]) -> Result<(), ErrorCode> {
-        fast_page_program(addr, data, SYS_PAGE_SIZE, SYS_LOAD);
+        boot_page_program(addr, data, SYS_LOAD);
         Ok(())
     }
 }

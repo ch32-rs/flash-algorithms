@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow, bail};
-use probe_rs_target::{FlashProperties, RawFlashAlgorithm};
+use probe_rs_target::{FlashProperties, RawFlashAlgorithm, SectorDescription};
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
@@ -243,7 +243,14 @@ fn extract_algo(buf: &[u8]) -> Result<RawFlashAlgorithm> {
         erased_byte_value: dev.erased,
         program_page_timeout: dev.program_to,
         erase_sector_timeout: dev.erase_to,
-        sectors: Vec::new(),
+        sectors: dev
+            .sectors
+            .iter()
+            .map(|(size, address)| SectorDescription {
+                size: *size as u64,
+                address: *address as u64,
+            })
+            .collect(),
     };
     // probe-rs schema default (Rust default for u64 is 0).
     algo.rtt_poll_interval = 20;
@@ -257,21 +264,36 @@ struct FlashDevice {
     erased: u8,
     program_to: u32,
     erase_to: u32,
+    sectors: Vec<(u32, u32)>,
 }
 
 fn read_flash_device(elf: &goblin::elf::Elf<'_>, buf: &[u8]) -> Result<FlashDevice> {
     use scroll::Pread;
     let mut addr = None;
+    let mut sym_size = 0u32;
     for s in elf.syms.iter() {
         if &elf.strtab[s.st_name] == "FlashDevice" {
             addr = Some(s.st_value as u32);
+            sym_size = s.st_size as u32;
             break;
         }
     }
     let addr = addr.ok_or_else(|| anyhow!("ELF missing FlashDevice symbol"))?;
 
-    let bytes = read_at(elf, buf, addr, 160)
-        .ok_or_else(|| anyhow!("FlashDevice not in any LOAD segment"))?;
+    let want = sym_size.max(160);
+    let bytes =
+        read_at(elf, buf, addr, want).ok_or_else(|| anyhow!("FlashDevice not in any LOAD segment"))?;
+    let mut sectors = Vec::new();
+    let mut off = 160;
+    while off + 8 <= bytes.len() {
+        let size: u32 = bytes.pread(off).unwrap();
+        let address: u32 = bytes.pread(off + 4).unwrap();
+        if size == u32::MAX && address == u32::MAX {
+            break;
+        }
+        sectors.push((size, address));
+        off += 8;
+    }
     Ok(FlashDevice {
         start: bytes.pread::<u32>(132).unwrap() as u64,
         size: bytes.pread::<u32>(136).unwrap() as u64,
@@ -279,6 +301,7 @@ fn read_flash_device(elf: &goblin::elf::Elf<'_>, buf: &[u8]) -> Result<FlashDevi
         erased: bytes.pread(148).unwrap(),
         program_to: bytes.pread(152).unwrap(),
         erase_to: bytes.pread(156).unwrap(),
+        sectors,
     })
 }
 

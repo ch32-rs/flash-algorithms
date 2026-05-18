@@ -11,6 +11,8 @@ pub const SYS_BASE: u32 = region("SYS_1").address;
 const SYS_FAST: (u32, u32) = fast(region("SYS_1"));
 pub const SYS_PAGE_SIZE: u32 = SYS_FAST.0;
 pub const SYS_LOAD: u32 = SYS_FAST.1;
+const SYS_STD: (u32, u32) = standard(region("SYS_1"));
+pub const SYS_ERASE_SIZE: u32 = SYS_STD.0;
 
 pub const OPT_BASE: u32 = region("OPT").address;
 const OPT_STD: (u32, u32) = standard(region("OPT"));
@@ -76,6 +78,50 @@ pub fn fast_page_program(addr: u32, data: &[u8], _page_size: u32, load_size: u32
     FLASH.ctlr().modify(|w| w.set_pgstart(true));
     wait_busy();
     FLASH.ctlr().modify(|w| w.set_page_pg(false));
+}
+
+/// SYS uses standard PER (4 KB) + BTER; FTER silently no-ops on this region.
+pub fn boot_page_erase(addr: u32) {
+    wait_busy();
+    FLASH.ctlr().modify(|w| {
+        w.set_per(true);
+        w.set_bter(true);
+    });
+    FLASH.addr().write(|w| w.set_far(addr));
+    FLASH.ctlr().modify(|w| w.set_strt(true));
+    wait_busy();
+    FLASH.ctlr().modify(|w| {
+        w.set_per(false);
+        w.set_bter(false);
+    });
+}
+
+/// `fast_page_program` with BTPG OR-ed in; without it the word write to
+/// 0x1FFF8000 faults and WR_BSY never clears.
+pub fn boot_page_program(addr: u32, data: &[u8], load_size: u32) {
+    wait_busy();
+    FLASH.ctlr().modify(|w| {
+        w.set_page_pg(true);
+        w.set_btpg(true);
+    });
+
+    let mut cur = addr;
+    let mut src = data.as_ptr() as *const u32;
+    let words = data.len() as u32 / load_size;
+    for _ in 0..words {
+        let v = unsafe { src.read() };
+        unsafe { core::ptr::write_volatile(cur as *mut u32, v) };
+        wait_wr_busy();
+        cur += load_size;
+        src = unsafe { src.add(1) };
+    }
+
+    FLASH.ctlr().modify(|w| w.set_pgstart(true));
+    wait_busy();
+    FLASH.ctlr().modify(|w| {
+        w.set_page_pg(false);
+        w.set_btpg(false);
+    });
 }
 
 pub fn mass_erase() {
