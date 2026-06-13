@@ -29,6 +29,6 @@ doctest = false
 bench = false
 
 [dependencies]
-ch32-metapac = { workspace = true, features = ["pac", "ch32v103c8t6"] }
+ch32-metapac = { path = "../../ch32-data/build/ch32-metapac", default-features = false, features = ["pac", "ch32v103c8t6"] }
 flash-algorithm = { workspace = true }
 flash-algo-common = { path = "../common" }

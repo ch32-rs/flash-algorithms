@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["algos/*", "xtask"]
-default-members = ["xtask"]
+# xtask is standalone (own [workspace] block); see xtask/Cargo.toml.
+members = ["algos/*"]
 
 [workspace.package]
 edition = "2024"
@@ -13,8 +13,8 @@ authors = [
 ]
 
 [workspace.dependencies]
-# Local path until ch32-data#36 merges.
-ch32-metapac = { path = "../ch32-data/build/ch32-metapac", default-features = false, features = ["metadata"] }
+# ch32-metapac is built locally from the ch32-data submodule and pulled in per-crate
+# via an inline path dep; not declared here so xtask runs on a fresh clone.
 flash-algorithm = { version = "0.7", default-features = false, features = ["erase-chip", "panic-handler"] }
 panic-halt = "1"
 

@@ -11,4 +11,4 @@ publish = false
 name = "flash_algo_common"
 
 [dependencies]
-ch32-metapac = { workspace = true }
+ch32-metapac = { path = "../../ch32-data/build/ch32-metapac", default-features = false }
