@@ -1,11 +1,18 @@
 [package]
 name = "xtask"
 version = "0.1.0"
-edition.workspace = true
-license.workspace = true
-repository.workspace = true
-authors.workspace = true
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ch32-rs/flash-algorithms"
+authors = [
+    "Andelf <andelf@gmail.com>",
+    "Aaron Qian <aq1018@gmail.com>",
+]
 publish = false
+
+# Standalone — included so `cargo run --manifest-path xtask/Cargo.toml` works on a
+# fresh clone, before the algos' generated path dep exists.
+[workspace]
 
 [dependencies]
 anyhow = "1"
