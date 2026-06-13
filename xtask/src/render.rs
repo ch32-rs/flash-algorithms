@@ -5,6 +5,7 @@ use probe_rs_target::{
     ArmCoreAccessOptions, Chip as PrChip, ChipFamily, Core as PrCore, CoreAccessOptions, CoreType,
     MemoryAccess, MemoryRegion as PrMemoryRegion, NvmRegion, RamRegion, RiscvCoreAccessOptions,
     SectorDescription, TargetDescriptionSource,
+    chip_detection::{ChipDetectionMethod, ObCodeRamSplit, WchLinkDetection},
 };
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
@@ -139,6 +140,7 @@ fn build_family(
     let mut variants: Vec<PrChip> = Vec::new();
     let mut variant_algo_uses: BTreeMap<String, Vec<Range<u64>>> = BTreeMap::new();
     let mut algo_kind: BTreeMap<String, String> = BTreeMap::new();
+    let mut detection_entries: BTreeMap<u32, DetectionGroup> = BTreeMap::new();
 
     for chip in chips {
         let default_opt = chip
@@ -147,6 +149,8 @@ fn build_family(
             .map(|c| c.default.clone());
 
         for package in &chip.packages {
+            let split = build_ob_code_ram_split(chip, &package.name);
+
             for variant in chip.variants() {
                 let is_default_variant = match (&variant.option, &default_opt) {
                     (Some(opt), Some(def)) => opt == def,
@@ -169,6 +173,22 @@ fn build_family(
                     &mut algo_kind,
                 );
 
+                // Non-default code/RAM splits share the same chip_id; the OB
+                // lookup picks the right variant post-attach via OB.USER bits
+                // 5-7. device_id=0 is ch32-data's "unknown" sentinel — drop
+                // those so multiple unknown-ID packages don't collide on key
+                // 0x0 in the variants IndexMap (last-write-wins would
+                // otherwise hide all but one).
+                if is_default_variant && package.device_id != 0 {
+                    let id = package.device_id;
+                    let mask = mask_for(id);
+                    let group = detection_entries.entry(mask).or_default();
+                    group.variants.insert(id & mask, target_name.clone());
+                    if let Some(s) = &split {
+                        group.ob_code_ram_splits.insert(id & mask, s.clone());
+                    }
+                }
+
                 variants.push(PrChip {
                     name: target_name,
                     part: None,
@@ -186,7 +206,16 @@ fn build_family(
         }
     }
 
-    let chip_detection = Vec::new();
+    let chip_detection: Vec<ChipDetectionMethod> = detection_entries
+        .into_iter()
+        .map(|(mask, group)| {
+            ChipDetectionMethod::WchLink(WchLinkDetection {
+                mask,
+                variants: group.variants,
+                ob_code_ram_splits: group.ob_code_ram_splits,
+            })
+        })
+        .collect();
 
     let mut flash_algorithms = Vec::new();
     for (algo_name, ranges) in variant_algo_uses {
@@ -377,6 +406,72 @@ fn find_template_region(chips: &[&Chip], kind: &str) -> Result<MemoryRegion> {
         }
     }
     Err(anyhow!("no region of kind {} in family", kind))
+}
+
+/// CH643 (0x643xxxxx) needs exact match per wlink's `chips.rs`; everyone
+/// else clears the package nibble.
+fn mask_for(chip_id: u32) -> u32 {
+    match chip_id & 0xFFF0_0000 {
+        0x6430_0000 => 0xFFFF_FFFF,
+        _ => 0xFFFF_FF0F,
+    }
+}
+
+#[derive(Default)]
+struct DetectionGroup {
+    variants: indexmap::IndexMap<u32, String>,
+    ob_code_ram_splits: indexmap::IndexMap<u32, ObCodeRamSplit>,
+}
+
+const OB_USER_ADDRESS: u64 = 0x1FFFF802;
+const RAM_CODE_MASK: u8 = 0xE0;
+
+fn build_ob_code_ram_split(chip: &Chip, package_name: &str) -> Option<ObCodeRamSplit> {
+    let cfg = chip.memory_ram_code_config.as_ref()?;
+    let ob_version = chip.ob_version()?;
+    let encoding = ram_code_encoding(ob_version)?;
+
+    let default_opt = &cfg.default;
+    let mut variants: indexmap::IndexMap<u8, String> = indexmap::IndexMap::new();
+    for raw in 0u8..8 {
+        let option_name = encoding(raw)?;
+        let suffix = if option_name == default_opt {
+            String::new()
+        } else {
+            format!("_{}", option_name)
+        };
+        let variant_name = format!("{}{}", package_name, suffix);
+        variants.insert(raw << 5, variant_name);
+    }
+
+    Some(ObCodeRamSplit {
+        address: OB_USER_ADDRESS,
+        mask: RAM_CODE_MASK,
+        variants,
+    })
+}
+
+/// Encoding follows `ch32-data/data/nv/ob_v{2,3}_ram_code.yaml`.
+fn ram_code_encoding(ob_version: &str) -> Option<fn(u8) -> Option<&'static str>> {
+    match ob_version {
+        "v2_ram_code" => Some(|raw| match raw {
+            0b000 | 0b001 => Some("c128_r64"),
+            0b010 | 0b011 => Some("c144_r48"),
+            0b100 | 0b101 => Some("c160_r32"),
+            // 0b11x reserved on v2; fall back to factory default.
+            0b110 | 0b111 => Some("c128_r64"),
+            _ => None,
+        }),
+        "v3_ram_code" => Some(|raw| match raw {
+            0b000 | 0b001 => Some("c192_r128"),
+            0b010 | 0b011 => Some("c224_r96"),
+            0b100 | 0b101 => Some("c256_r64"),
+            0b110 => Some("c128_r192"),
+            0b111 => Some("c288_r32"),
+            _ => None,
+        }),
+        _ => None,
+    }
 }
 
 /// Collapse contiguous `USR_1`+`USR_2` runs into a single `USR` — the V2/V3
