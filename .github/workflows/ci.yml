@@ -34,7 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        crate: [v0, v00x, v1, v3, l1, x0, f1]
+        crate: [v0, v00x, v1, v3, l1, x0, h4, f1]
     steps:
       - uses: actions/checkout@v6
         with: { submodules: recursive }
