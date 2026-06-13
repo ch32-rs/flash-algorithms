@@ -53,6 +53,19 @@ pub fn unlock_options() {
     FLASH.obkeyr().write(|w| w.set_obtkey(KEY2));
 }
 
+/// BOOT_LOCK gates SYS access; standard PER/FTPG flow then targets 0x1FFF0000
+/// directly (H4 has no BTPG/BTER equivalents).
+pub fn unlock_boot() {
+    unlock_main();
+    FLASH.boot_modekeyr().write(|w| w.set_bootkeyr(KEY1));
+    FLASH.boot_modekeyr().write(|w| w.set_bootkeyr(KEY2));
+}
+
+pub fn lock_boot() {
+    FLASH.statr().modify(|w| w.set_boot_lock(true));
+    lock_main();
+}
+
 pub fn page_erase(addr: u32) {
     wait_busy();
     FLASH.ctlr().modify(|w| w.set_per(true));
