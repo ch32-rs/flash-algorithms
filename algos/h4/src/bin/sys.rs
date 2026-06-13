@@ -23,7 +23,7 @@ algorithm!(Algo, {
 
 impl FlashAlgorithm for Algo {
     fn new(_addr: u32, _clock: u32, _function: Function) -> Result<Self, ErrorCode> {
-        unlock_main();
+        unlock_boot();
         Ok(Self)
     }
 
@@ -44,6 +44,6 @@ impl FlashAlgorithm for Algo {
 
 impl Drop for Algo {
     fn drop(&mut self) {
-        lock_main();
+        lock_boot();
     }
 }
