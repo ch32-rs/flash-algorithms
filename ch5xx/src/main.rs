@@ -37,6 +37,9 @@ unsafe fn w32(a: usize, v: u32) {
 /// access `R8_SAFE_ACCESS_SIG` at `0x40001040`, `R8_CHIP_ID` at `0x40001041`,
 /// `R8_GLOB_ROM_CFG` at `0x40001044`, and `R32_FLASH_DATA`/`R8_FLASH_CTRL` at
 /// `0x40001800..0x40001806` — identical to CH570/572, CH581/582/583/584/585, and CH591/592.
+///
+/// Note: CH595 uses a newer hardware pre-program/page-latch Flash controller at
+/// `0x40001800..0x40001820` (`CH59x_flash.c`) and is not covered by this crate.
 #[inline(always)]
 unsafe fn flash_limit() -> u32 {
     let id = unsafe { r8(CHIP_ID) };
