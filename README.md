@@ -19,7 +19,7 @@ unify two ch32-metapac chip features, so the lib is duplicated.
 | `algos/l1`   | `flash_l1`       | `riscv32imac-unknown-none-elf`     | CH32L103                   |
 | `algos/h4`   | `flash_h4`       | `riscv32imac-unknown-none-elf`     | CH32H415/H416/H417         |
 | `algos/f1`   | `flash_v1`       | `thumbv7m-none-eabi`               | CH32F103 (Cortex-M3)       |
-| `ch5xx`      | SPI-like R8/R32  | `riscv32imac-unknown-none-elf`     | CH57x, CH58x, CH59x (PIC)  |
+| `ch5xx`      | `FLASH_ROM`      | `riscv32imac-unknown-none-elf`     | CH57x, CH58x, CH59x (PIC)  |
 
 Each `algos/*` crate builds three binaries — `usr`, `sys`, `ob` — one per writable
 region. VND (vendor / ESIG) is read-only and not programmed.
