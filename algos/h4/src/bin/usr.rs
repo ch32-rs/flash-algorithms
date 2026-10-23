@@ -27,14 +27,12 @@ impl FlashAlgorithm for Algo {
         Ok(Self)
     }
 
-    /// H4 has no MER bit — bulk erase falls back to per-sector PER.
     fn erase_all(&mut self) -> Result<(), ErrorCode> {
-        Err(ERR_NOT_SUPPORTED)
+        erase_user_flash()
     }
 
     fn erase_sector(&mut self, addr: u32) -> Result<(), ErrorCode> {
-        page_erase(addr | USR_BASE);
-        Ok(())
+        erase_user_sector(addr | USR_BASE)
     }
 
     fn program_page(&mut self, addr: u32, data: &[u8]) -> Result<(), ErrorCode> {

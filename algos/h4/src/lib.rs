@@ -11,6 +11,14 @@ const USR_STD: (u32, u32) = standard(region("USR_1"));
 /// app/bootloader/config layouts is worth the 8× erase calls.
 pub const USR_ERASE_SIZE: u32 = USR_STD.0;
 
+const USR_BLOCK_COUNT: u32 = 15;
+const USR_SINGLE_PAGE_SIZE: u32 = 4 * 1024;
+const USR_DUAL_PAGE_SIZE: u32 = 8 * 1024;
+const USR_SINGLE_BLOCK_SIZE: u32 = 32 * 1024;
+const USR_DUAL_BLOCK_SIZE: u32 = 64 * 1024;
+
+const ERR_WRITE_PROTECTED: core::num::NonZeroU32 = core::num::NonZeroU32::new(2).unwrap();
+
 pub const SYS_BASE: u32 = region("SYS_1").address;
 const SYS_FAST: (u32, u32) = fast(region("SYS_1"));
 pub const SYS_PAGE_SIZE: u32 = SYS_FAST.0;
@@ -73,6 +81,88 @@ pub fn page_erase(addr: u32) {
     FLASH.ctlr().modify(|w| w.set_strt(true));
     wait_busy();
     FLASH.ctlr().modify(|w| w.set_per(false));
+}
+
+const fn user_page_size(dual_mode: bool) -> u32 {
+    if dual_mode {
+        USR_DUAL_PAGE_SIZE
+    } else {
+        USR_SINGLE_PAGE_SIZE
+    }
+}
+
+const fn user_sector_page_count(dual_mode: bool) -> u32 {
+    USR_ERASE_SIZE / user_page_size(dual_mode)
+}
+
+fn clear_write_protection_error_flag() {
+    FLASH.statr().write(|w| w.set_wrprterr(true));
+}
+
+fn check_write_protection_error() -> Result<(), core::num::NonZeroU32> {
+    if FLASH.statr().read().wrprterr() {
+        clear_write_protection_error_flag();
+        Err(ERR_WRITE_PROTECTED)
+    } else {
+        Ok(())
+    }
+}
+
+fn erase_user_page(addr: u32) -> Result<(), core::num::NonZeroU32> {
+    clear_write_protection_error_flag();
+    page_erase(addr);
+    check_write_protection_error()
+}
+
+/// probe-rs exposes a common 8 KiB logical sector for H4 USR flash. PER erases
+/// 8 KiB in dual-flash mode, but only 4 KiB in single-flash mode.
+pub fn erase_user_sector(addr: u32) -> Result<(), core::num::NonZeroU32> {
+    let dual_mode = FLASH.cfgr0().read().dbmode();
+    let page_size = user_page_size(dual_mode);
+    let page_count = user_sector_page_count(dual_mode);
+    for page in 0..page_count {
+        erase_user_page(addr + page * page_size)?;
+    }
+    Ok(())
+}
+
+const fn user_block_size(dual_mode: bool) -> u32 {
+    if dual_mode {
+        USR_DUAL_BLOCK_SIZE
+    } else {
+        USR_SINGLE_BLOCK_SIZE
+    }
+}
+
+const _: () = {
+    assert!(USR_ERASE_SIZE == 8 * 1024);
+    assert!(user_sector_page_count(true) == 1);
+    assert!(user_sector_page_count(false) == 2);
+    assert!(USR_BLOCK_COUNT * user_block_size(true) == region("USR_1").size);
+    assert!(USR_BLOCK_COUNT * user_block_size(false) == 480 * 1024);
+};
+
+fn block_erase(addr: u32) -> Result<(), core::num::NonZeroU32> {
+    wait_busy();
+    clear_write_protection_error_flag();
+    FLASH.ctlr().modify(|w| w.set_ber(true));
+    FLASH.addr().write(|w| w.set_far(addr));
+    FLASH.ctlr().modify(|w| w.set_strt(true));
+    wait_busy();
+    FLASH.ctlr().modify(|w| w.set_ber(false));
+
+    check_write_protection_error()
+}
+
+/// Both H4 flash modes contain 15 BER blocks; DBMODE selects their physical size.
+pub fn erase_user_flash() -> Result<(), core::num::NonZeroU32> {
+    let block_size = user_block_size(FLASH.cfgr0().read().dbmode());
+
+    for block in 0..USR_BLOCK_COUNT {
+        block_erase(USR_BASE + block * block_size)?;
+    }
+
+    Ok(())
 }
 
 /// RM 46.5.6: stream 32-bit words straight to the flash address with WRBSY
