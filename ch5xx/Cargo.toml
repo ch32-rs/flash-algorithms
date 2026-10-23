@@ -1,0 +1,32 @@
+[package]
+name = "flash-algo-ch5xx"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ch32-rs/flash-algorithms"
+authors = [
+    "Andelf <andelf@gmail.com>",
+]
+publish = false
+
+# Standalone workspace so `cargo +nightly build --release` works without
+# bootstrapping `ch32-data` and without `xtask` treating `ch5xx` as a CH32
+# `usr`/`sys`/`ob` crate.
+#
+# Additionally, `flash-algorithm`'s `algorithm!` macro stores a mutable static
+# `_IS_INIT` flag in `.bss` using an absolute RAM address (`lui 0x20000`),
+# which breaks position-independence on CH571/CH573 (SRAM at `0x20003800`).
+# This crate exposes the CMSIS-Pack entry points directly so the resulting
+# 1024-byte binary is 100% position-independent across CH57x/CH58x/CH59x.
+[workspace]
+
+[[bin]]
+name = "code-flash"
+path = "src/main.rs"
+test = false
+doctest = false
+bench = false
+
+[profile.release]
+opt-level = "s"
+panic = "abort"

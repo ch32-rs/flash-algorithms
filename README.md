@@ -19,9 +19,15 @@ unify two ch32-metapac chip features, so the lib is duplicated.
 | `algos/l1`   | `flash_l1`       | `riscv32imac-unknown-none-elf`     | CH32L103                   |
 | `algos/h4`   | `flash_h4`       | `riscv32imac-unknown-none-elf`     | CH32H415/H416/H417         |
 | `algos/f1`   | `flash_v1`       | `thumbv7m-none-eabi`               | CH32F103 (Cortex-M3)       |
+| `ch5xx`      | SPI-like R8/R32  | `riscv32imac-unknown-none-elf`     | CH57x, CH58x, CH59x (PIC)  |
 
-Each crate builds three binaries — `usr`, `sys`, `ob` — one per writable
+Each `algos/*` crate builds three binaries — `usr`, `sys`, `ob` — one per writable
 region. VND (vendor / ESIG) is read-only and not programmed.
+
+`ch5xx` is a standalone workspace crate that builds a single 1024-byte
+position-independent `code-flash` binary shared across CH57x (CH570/571/572/573),
+CH58x (CH581..585), and CH59x (CH591/592), enforcing the per-chip CodeFlash ceiling
+dynamically via `R8_CHIP_ID` (`0x40001041`).
 
 ## Repo layout
 
@@ -37,6 +43,7 @@ flash-algorithms/
 │       ├── ch32-metapac/       # ← algo path dep target
 │       └── data/chips/*.json   # ← xtask reads these
 ├── algos/{common,v0,v00x,v1,v3,l1,x0,h4,f1}/
+├── ch5xx/                      # standalone PIC flash algorithm for CH57x/CH58x/CH59x
 └── xtask/                      # standalone crate, NOT in the algos workspace
 ```
 
@@ -102,7 +109,7 @@ git add ch32-data && git commit -m "bump ch32-data to <new-sha>"
 own. Mirror CI instead:
 
 ```
-find algos xtask -name '*.rs' -not -path '*/target/*' -print0 \
+find algos ch5xx xtask -name '*.rs' -not -path '*/target/*' -print0 \
   | xargs -0 rustfmt --edition 2024
 ```
 
