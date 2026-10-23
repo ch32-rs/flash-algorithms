@@ -36,7 +36,7 @@ unsafe fn w32(a: usize, v: u32) {
 /// at `SYS + 4`, but both `CH573SFR.h` and `wlink`'s `flash_op::CH573` (`ISP573.o`)
 /// access `R8_SAFE_ACCESS_SIG` at `0x40001040`, `R8_CHIP_ID` at `0x40001041`,
 /// `R8_GLOB_ROM_CFG` at `0x40001044`, and `R32_FLASH_DATA`/`R8_FLASH_CTRL` at
-/// `0x40001800..0x40001806` — identical to CH570/572, CH581..585, and CH591/592.
+/// `0x40001800..0x40001806` — identical to CH570/572, CH581/582/583/584/585, and CH591/592.
 #[inline(always)]
 unsafe fn flash_limit() -> u32 {
     let id = unsafe { r8(CHIP_ID) };
@@ -45,7 +45,7 @@ unsafe fn flash_limit() -> u32 {
     } else if id == 0x70 || id == 0x72 {
         0x0003_c000 // CH570, CH572: 240 KiB
     } else {
-        0x0007_0000 // CH573, CH581..585, CH592: 448 KiB
+        0x0007_0000 // CH573, CH581, CH582, CH583, CH584, CH585, CH592: 448 KiB
     }
 }
 

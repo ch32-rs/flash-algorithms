@@ -25,9 +25,10 @@ Each `algos/*` crate builds three binaries — `usr`, `sys`, `ob` — one per wr
 region. VND (vendor / ESIG) is read-only and not programmed.
 
 `ch5xx` is a standalone workspace crate that builds a single 1024-byte
-position-independent `code-flash` binary shared across CH57x (CH570/571/572/573),
-CH58x (CH581..585), and CH59x (CH591/592), enforcing the per-chip CodeFlash ceiling
-dynamically via `R8_CHIP_ID` (`0x40001041`).
+position-independent `code-flash` binary shared across CH57x (CH570, CH571,
+CH572, CH573), CH58x (CH581, CH582, CH583, CH584, CH585), and CH59x (CH591,
+CH592), enforcing the per-chip CodeFlash ceiling dynamically via `R8_CHIP_ID`
+(`0x40001041`).
 
 ## Repo layout
 
