@@ -20,6 +20,7 @@ unify two ch32-metapac chip features, so the lib is duplicated.
 | `algos/h4`   | `flash_h4`       | `riscv32imac-unknown-none-elf`     | CH32H415/H416/H417         |
 | `algos/f1`          | `flash_v1`       | `thumbv7m-none-eabi`               | CH32F103 (Cortex-M3)       |
 | `algos-ch5xx/ch5xx` | `FLASH_ROM`      | `riscv32imac-unknown-none-elf`     | CH570/571/572/573, CH581/582/583/584/585, CH591/592 (PIC) |
+| `algos-ch5xx/ch569` | `FLASH_ROM`      | `riscv32imac-unknown-none-elf`     | CH565/CH569                |
 
 Each `algos/*` crate builds three binaries — `usr`, `sys`, `ob` — one per writable
 region. VND (vendor / ESIG) is read-only and not programmed.
@@ -34,6 +35,10 @@ at `0x40001800..0x40001820` (`CH59x_flash.c`) rather than the SPI-like
 `0x40001800..0x40001806` interface, CH586/CH587 have up to 960 KiB CodeFlash,
 and CH577/CH578/CH579 are Cortex-M0 parts, so they are not covered by
 `algos-ch5xx/ch5xx` (and can be added as sibling crates under `algos-ch5xx/`).
+
+`algos-ch5xx/ch569` covers CH565/CH569 (448 KiB, 4 KiB sectors). Its flash
+window is in the SYS block (`0x40001014`/`18`/`1a`), not at `0x40001800`, and
+the algorithm is linked into RAMX at `0x20020008`.
 
 ## Repo layout
 

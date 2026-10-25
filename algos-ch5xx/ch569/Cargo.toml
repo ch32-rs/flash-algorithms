@@ -1,0 +1,42 @@
+[package]
+name = "flash-algo-ch569"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ch32-rs/flash-algorithms"
+authors = [
+    "Andelf <andelf@gmail.com>",
+]
+publish = false
+
+# Standalone workspace: `xtask` only builds `algos/*`. The binary itself uses
+# the same `flash-algorithm` `algorithm!` macro as `algos/*`, so the ELF has a
+# `FlashDevice` and `target-gen elf --fixed-load-address` can fill the YAML.
+#
+# The macro's `_IS_INIT` lives in `.bss` at the absolute load address. That is
+# fine here (`ALGO_PLACEMENT_START_ADDRESS=0x20020008`, RAMX). It is why
+# `algos-ch5xx/ch5xx` does not use the crate: that binary is position-independent
+# and CH571/CH573 SRAM is not at `0x20000000`.
+#
+# CH565/CH569 are QingKe V3A (RV32IMAC). Their flash window sits inside the
+# SYS block, at `0x40001014`/`0x40001018`/`0x4000101a`, not at the
+# CH57x/CH58x/CH59x window `0x40001800` (which does not decode here).
+# Safe-access and `R8_GLOB_ROM_CFG` are at `0x40001000` / `0x40001004`, and
+# `RB_ROM_CODE_WE` is bit 3. A sector erase is command `0x20` (4 KiB); the full
+# erase uses `0xD8` in 64 KiB steps. A command starts with CTRL `7`, not `5`.
+[workspace]
+
+[dependencies]
+flash-algorithm = { version = "0.7", default-features = false, features = ["erase-chip", "panic-handler", "read-flash"] }
+
+[[bin]]
+name = "usr"
+test = false
+doctest = false
+bench = false
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = "s"
+panic = "abort"
