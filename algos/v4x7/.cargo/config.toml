@@ -1,0 +1,11 @@
+[build]
+target = "riscv32imac-unknown-none-elf"
+
+[unstable]
+build-std = ["core", "compiler_builtins"]
+
+[target.'cfg(all(target_arch = "riscv32", target_os = "none"))']
+rustflags = [
+  "-C", "link-arg=-Tmemory.x",
+  "-C", "link-arg=--defsym=ALGO_PLACEMENT_START_ADDRESS=0x20000020",
+]
