@@ -180,6 +180,19 @@ pub extern "C" fn uninit(_fn_code: u32) -> u32 {
     }
 }
 
+/// One erase command. `cmd` is `0x20` for a 4 KiB sector or `0xD8` for a
+/// 64 KiB block.
+#[inline(always)]
+unsafe fn erase_block(cmd: u8, at: u32) -> u32 {
+    unsafe {
+        unlock_and_reset();
+        addr(cmd, at);
+        let st = wait();
+        lock();
+        if st == 0 { 1 } else { 0 }
+    }
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn erase_sector(sector_addr: u32) -> u32 {
     let aligned = sector_addr & 0x0fff_f000;
@@ -187,11 +200,7 @@ pub extern "C" fn erase_sector(sector_addr: u32) -> u32 {
         if aligned >= flash_limit() {
             return 1;
         }
-        unlock_and_reset();
-        addr(0x20, aligned);
-        let st = wait();
-        lock();
-        if st == 0 { 1 } else { 0 }
+        erase_block(0x20, aligned)
     }
 }
 
@@ -200,10 +209,19 @@ pub extern "C" fn erase_all() -> u32 {
     let limit = unsafe { flash_limit() };
     let mut a = 0u32;
     while a < limit {
-        if erase_sector(a) != 0 {
-            return 1;
+        // Erase 64 KiB blocks while a whole block is left, then the remainder
+        // sector by sector. 448 KiB and 192 KiB are exact multiples of 64 KiB;
+        // 240 KiB leaves a 12 KiB tail.
+        let (cmd, step) = if a & 0xffff == 0 && limit - a >= 0x1_0000 {
+            (0xd8, 0x1_0000)
+        } else {
+            (0x20, 0x1000)
+        };
+        let r = unsafe { erase_block(cmd, a) };
+        if r != 0 {
+            return r;
         }
-        a += 0x1000;
+        a += step;
     }
     0
 }
