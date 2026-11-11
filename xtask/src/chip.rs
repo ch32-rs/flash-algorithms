@@ -17,6 +17,10 @@ pub struct Chip {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Package {
     pub name: String,
+    /// chip_id reported by WCH-Link `AttachChip`; drives `chip_detection`.
+    /// `0` means unknown — emitted by ch32-data when no ID is on record.
+    #[serde(default)]
+    pub device_id: u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -29,6 +33,16 @@ pub struct MemoryRegion {
     pub modes: Vec<Mode>,
     #[serde(default)]
     pub access: Option<Access>,
+    #[serde(default)]
+    pub structs: Vec<MemoryStruct>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MemoryStruct {
+    #[serde(default)]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -122,6 +136,19 @@ impl Chip {
 
     pub fn arch(&self) -> Option<&str> {
         self.cores.first().and_then(|c| c.arch.as_deref())
+    }
+
+    /// `_ram_code` suffix indicates `OB.USER` carries an SRAM/CODE split
+    /// field (bits 5-7).
+    pub fn ob_version(&self) -> Option<&str> {
+        for region in &self.memory {
+            for s in &region.structs {
+                if s.kind.as_deref() == Some("ob") {
+                    return s.version.as_deref();
+                }
+            }
+        }
+        None
     }
 
     pub fn variants(&self) -> Vec<Variant> {
