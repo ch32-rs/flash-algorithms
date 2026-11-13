@@ -1,0 +1,34 @@
+[package]
+name = "flash-algo-ch595"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ch32-rs/flash-algorithms"
+authors = [
+    "Andelf <andelf@gmail.com>",
+]
+publish = false
+
+# Standalone workspace, like `algos-ch5xx/ch564`. CH595/CH596 replace the
+# CH57x/CH58x/CH59x serial flash window with a hardware pre-program/erase/page
+# latch controller at 0x40001800..0x40001820, so they cannot share the
+# `ch5xx` binaries. The official CH59x_flash.c implements the sequence:
+#   pre-program -> erase -> clear page latch -> load 256B -> program page
+# The only writable region is CodeFlash (240 KiB, 2 KiB sectors); there is no
+# user DataFlash. R8_CHIP_ID is 0x97 (CH595) or 0x96 (CH596).
+[workspace]
+
+[dependencies]
+flash-algorithm = { version = "0.7", default-features = false, features = ["erase-chip", "panic-handler", "read-flash"] }
+
+[[bin]]
+name = "code"
+test = false
+doctest = false
+bench = false
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = "s"
+panic = "abort"
