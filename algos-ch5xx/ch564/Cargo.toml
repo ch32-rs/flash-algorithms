@@ -1,0 +1,42 @@
+[package]
+name = "flash-algo-ch564"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ch32-rs/flash-algorithms"
+authors = [
+    "Andelf <andelf@gmail.com>",
+]
+publish = false
+
+# Standalone workspace, like `algos-ch5xx/ch569`. CH564 is QingKe V4J; its
+# flash controller moves to 0x40400018/0x4040001a and uses CTRL=3/7, so it
+# cannot share the CH56x/CH57x/CH58x/CH59x binaries.
+#
+# The official `libISP564.a` exposes both memory configurations:
+#   config byte 0x3007 bit 5 = 0 -> CodeFlash 192K, DataFlash 32K @ 0x30000
+#   config byte 0x3007 bit 5 = 1 -> CodeFlash 448K, DataFlash 32K @ 0x70000
+# The algorithms read that byte at runtime; the probe-rs target exposes the two
+# address maps as separate variants.
+[workspace]
+
+[dependencies]
+flash-algorithm = { version = "0.7", default-features = false, features = ["erase-chip", "panic-handler", "read-flash"] }
+
+[[bin]]
+name = "code"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "data"
+test = false
+doctest = false
+bench = false
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = "s"
+panic = "abort"
