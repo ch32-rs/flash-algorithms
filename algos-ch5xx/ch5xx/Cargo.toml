@@ -21,8 +21,31 @@ publish = false
 # CH581/582/583/584/585, and CH591/592.
 [workspace]
 
+# One binary per writable region, named after the datasheet's CODE-area map.
+# The two DataFlash variants share `src/data_flash.rs`; they differ only in
+# the `0x80000` frame bit and must stay separate binaries because
+# `R8_CHIP_ID` collides across the two ISP generations. `data-584x` uses the
+# engine's 0-based 512 KiB DataFlash mapping and a 4 KiB erase block.
 [[bin]]
 name = "code"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "data"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "data-bank"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "data-584x"
 test = false
 doctest = false
 bench = false
