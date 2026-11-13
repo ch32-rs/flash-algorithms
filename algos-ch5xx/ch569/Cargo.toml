@@ -35,6 +35,14 @@ test = false
 doctest = false
 bench = false
 
+# DataFlash: 32 KiB at 0x70000, 4 KiB erase, byte-wise program. Same flash
+# window and CH56x command timing as `usr`, but a separate region.
+[[bin]]
+name = "data"
+test = false
+doctest = false
+bench = false
+
 [profile.release]
 codegen-units = 1
 lto = "fat"
