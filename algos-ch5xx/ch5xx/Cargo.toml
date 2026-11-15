@@ -16,13 +16,33 @@ publish = false
 # Additionally, `flash-algorithm`'s `algorithm!` macro stores a mutable static
 # `_IS_INIT` flag in `.bss` using an absolute RAM address (`lui 0x20000`),
 # which breaks position-independence on CH571/CH573 (SRAM at `0x20003800`).
-# This crate exposes the CMSIS-Pack entry points directly so the resulting
-# 1024-byte `usr` binary is 100% position-independent across CH570/571/572/573,
-# CH581/582/583/584/585, and CH591/592.
+# This crate exposes the CMSIS-Pack entry points directly so its binaries
+# are 100% position-independent across CH570/571/572/573, CH581/582/583/584/585,
+# and CH591/592.
 [workspace]
 
+# One binary per writable partition: `usr-code` (用户应用程序存储区/CodeFlash)
+# and `usr-data*` (用户非易失数据存储区/DataFlash); see README for the variants.
 [[bin]]
-name = "usr"
+name = "usr-code"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "usr-data"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "usr-data-0x80000"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "usr-data-584x"
 test = false
 doctest = false
 bench = false

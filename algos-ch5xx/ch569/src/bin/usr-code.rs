@@ -18,11 +18,15 @@ const WDATA: usize = 0x4000_1014;
 const SAM: usize = 0x4000_1000;
 const ROMCFG: usize = 0x4000_1004;
 
-/// CodeFlash is `0x00000..0x70000` (448 KiB). DataFlash follows at `0x70000`
-/// (32 KiB) and is not mapped here. `0x80000` is the end of the 512 KiB ROM
-/// window (CH569DS1 table 2-1); the loader rejects anything at or above it.
+/// CodeFlash is `0x00000..0x70000` (448 KiB) in the CPU map. DataFlash follows
+/// at `0x70000` (32 KiB) and is not mapped here.
 const CODE_LIMIT: u32 = 0x0007_0000;
+/// End of the engine address space (DataFlash `0..0x8000`, CodeFlash after it).
 const ROM_LIMIT: u32 = 0x0008_0000;
+
+/// CodeFlash engine offset: `libISPEM569.a` sends `addr + 0x8000`; the
+/// `EEPROM_*` helpers send DataFlash 0-based.
+const ENGINE_OFFSET: u32 = 0x0000_8000;
 
 /// `RB_ROM_CODE_WE | RB_ROM_DATA_WE | RB_CODE_RAM_WE` = bits 3, 2, 1.
 /// The official loader ORs `0x8c` and, when locking, keeps bit 7 (`0x80`)
@@ -261,8 +265,9 @@ unsafe fn out(v: u8) {
 /// Send a 24-bit address command. Command `0x0b` (read) skips the preamble
 /// that every other command sends; the official loader does the same.
 #[inline(always)]
-unsafe fn addr(c: u8, mut a: u32) {
+unsafe fn addr(c: u8, a: u32) {
     unsafe {
+        let mut a = a + ENGINE_OFFSET;
         if c != 0x0b {
             beg(6);
             end();
