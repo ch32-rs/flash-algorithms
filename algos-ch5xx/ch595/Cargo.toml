@@ -22,7 +22,7 @@ publish = false
 flash-algorithm = { version = "0.7", default-features = false, features = ["erase-chip", "panic-handler", "read-flash"] }
 
 [[bin]]
-name = "code"
+name = "usr"
 test = false
 doctest = false
 bench = false

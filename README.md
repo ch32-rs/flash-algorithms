@@ -28,20 +28,22 @@ unify two ch32-metapac chip features, so the lib is duplicated.
 Each `algos/*` crate builds three binaries — `usr`, `sys`, `ob` — one per writable
 region (CH32 naming). VND (vendor / ESIG) is read-only and not programmed.
 
-`algos-ch5xx/ch5xx` is a standalone workspace crate. Its binaries and the
-probe-rs regions are named after the datasheet's CODE-area map:
-`CodeFlash` / `DataFlash` / `InfoFlash` — not the CH32
-`USR`/`SYS`/`OPT` names. `InfoFlash` is a read-only region; `BootLoader` is not
-mapped.
+`algos-ch5xx/ch5xx` is a standalone workspace crate. Its binaries are named
+after the datasheet's flash partitions — `usr` (用户应用程序存储区, `CodeFlash`)
+and `data` (用户非易失数据存储区, `DataFlash`) — with `data-bank`/`data-584x`
+for the two DataFlash framings. The probe-rs regions keep the datasheet's
+English names (`CodeFlash` / `DataFlash` / `InfoFlash`). `InfoFlash` is a
+read-only region; `BootLoader` is not mapped: its controller has no erase/write
+enable, so there is no `boot`/`sys` binary.
 
 | Binary      | Region      | Frame address   | Chips                            |
 | ----------- | ----------- | --------------- | -------------------------------- |
-| `code`      | `CodeFlash` | absolute; `addr + 0x80000` on CH584X | CH570/571/572/573, CH581/582/583/584/585, CH591/592, CH584X |
+| `usr`       | `CodeFlash` | absolute; `addr + 0x80000` on CH584X | CH570/571/572/573, CH581/582/583/584/585, CH591/592, CH584X |
 | `data`      | `DataFlash` | `0x70000 + off` | CH571/CH573, CH581/CH584/CH585   |
 | `data-bank` | `DataFlash` | `0xF0000 + off` | CH582/CH583, CH591/CH592         |
 | `data-584x` | `DataFlash` | 0-based engine  | CH584X                           |
 
-`code` is position-independent and shared across the family; it enforces the
+`usr` is position-independent and shared across the family; it enforces the
 per-chip CodeFlash ceiling dynamically via `R8_CHIP_ID` (`0x40001041`).
 CH584X shares `R8_CHIP_ID` (`0x92`) with CH581/CH584/CH592 but has 480 KiB of
 CodeFlash at a different engine frame address (`addr + 0x80000`). The basic

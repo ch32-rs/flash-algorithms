@@ -8,5 +8,5 @@
 #[path = "../flash_rom.rs"]
 mod flash_rom;
 
-#[path = "../code_flash.rs"]
-mod code_flash;
+#[path = "../usr_flash.rs"]
+mod usr_flash;
