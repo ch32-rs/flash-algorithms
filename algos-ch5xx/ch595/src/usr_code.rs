@@ -1,4 +1,4 @@
-//! CodeFlash support for CH595/CH596.
+//! CodeFlash (`usr-code`) support for CH595/CH596.
 //!
 //! Both parts expose 240 KiB of user CodeFlash at `0..0x3C000`, erased in
 //! 2 KiB sectors and programmed through a 256-byte page latch. There is no

@@ -33,20 +33,8 @@ unsafe fn w32(a: usize, v: u32) {
     unsafe { core::ptr::write_volatile(a as *mut u32, v) }
 }
 
-/// CH584X compatibility: check the basic chip ID first, so only the `0x92`
-/// group reads the ISP585 model code at `0x7F024`.
-///
-/// `0x7F024` is a Flash read, so every entry point calls this before
-/// `unlock_and_reset`. Reading Flash between the unlock and the erase command
-/// leaves the CH592 engine busy forever. WCH's `libISP585` reads it before its
-/// own unlock for the same reason.
-///
-/// The result is deliberately *not* cached in a `static mut`: the linker gives
-/// such a static an absolute RAM address from `link.ld`, while probe-rs loads
-/// this position-independent binary at the start of whatever RAM region the
-/// target declares (CH571/CH573 start at `0x20003800`), so the static can land
-/// outside RAM. One Flash read per entry point is negligible next to an
-/// erase/program.
+/// CH584X check; reads Flash at `0x7F024`, so call it before unlocking the
+/// engine. Not cached: a `static` would get an absolute address from `link.ld`.
 #[inline(always)]
 unsafe fn detect_584x() -> bool {
     unsafe {

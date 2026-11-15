@@ -1,4 +1,4 @@
-//! CodeFlash support for CH564.
+//! CodeFlash (`usr-code`) support for CH564.
 //!
 //! CH564 has two memory configurations, selected by InfoFlash `0x3007` bit 5:
 //! 192 KiB CodeFlash at `0..0x30000`, or 448 KiB at `0..0x70000`. The

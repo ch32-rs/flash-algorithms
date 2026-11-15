@@ -28,22 +28,21 @@ unify two ch32-metapac chip features, so the lib is duplicated.
 Each `algos/*` crate builds three binaries — `usr`, `sys`, `ob` — one per writable
 region (CH32 naming). VND (vendor / ESIG) is read-only and not programmed.
 
-`algos-ch5xx/ch5xx` is a standalone workspace crate. Its binaries are named
-after the datasheet's flash partitions — `usr` (用户应用程序存储区, `CodeFlash`)
-and `data` (用户非易失数据存储区, `DataFlash`) — with `data-0x80000`/`data-584x`
-for the two DataFlash framings. The probe-rs regions keep the datasheet's
-English names (`CodeFlash` / `DataFlash` / `InfoFlash`). `InfoFlash` is a
-read-only region; `BootLoader` is not mapped: its controller has no erase/write
-enable, so there is no `boot`/`sys` binary.
+`algos-ch5xx/ch5xx` is a standalone workspace crate. Its binaries follow the
+datasheet's user-area split: `usr-code` (用户应用程序存储区, `CodeFlash`) and
+`usr-data*` (用户非易失数据存储区, `DataFlash`). The probe-rs regions keep the
+datasheet's English names (`CodeFlash` / `DataFlash` / `InfoFlash`). `InfoFlash`
+is read-only and `BootLoader` has no erase/write enable, so there is no
+`boot`/`info` binary.
 
-| Binary         | Region      | Frame address                        | Chips                                                       |
-| -------------- | ----------- | ------------------------------------ | ----------------------------------------------------------- |
-| `usr`          | `CodeFlash` | absolute; `addr + 0x80000` on CH584X | CH570/571/572/573, CH581/582/583/584/585, CH591/592, CH584X |
-| `data`         | `DataFlash` | `0x70000 + off`                      | CH571/CH573, CH581/CH584/CH585                              |
-| `data-0x80000` | `DataFlash` | `0xF0000 + off`                      | CH582/CH583, CH591/CH592                                    |
-| `data-584x`    | `DataFlash` | 0-based engine                       | CH584X                                                      |
+| Binary             | Region      | Frame address                        | Chips                                                       |
+| ------------------ | ----------- | ------------------------------------ | ----------------------------------------------------------- |
+| `usr-code`         | `CodeFlash` | absolute; `addr + 0x80000` on CH584X | CH570/571/572/573, CH581/582/583/584/585, CH591/592, CH584X |
+| `usr-data`         | `DataFlash` | `0x70000 + off`                      | CH571/CH573, CH581/CH584/CH585                              |
+| `usr-data-0x80000` | `DataFlash` | `0xF0000 + off`                      | CH582/CH583, CH591/CH592                                    |
+| `usr-data-584x`    | `DataFlash` | 0-based engine                       | CH584X                                                      |
 
-`usr` is position-independent and shared across the family; it enforces the
+`usr-code` is position-independent and shared across the family; it enforces the
 per-chip CodeFlash ceiling dynamically via `R8_CHIP_ID` (`0x40001041`).
 CH584X shares `R8_CHIP_ID` (`0x92`) with CH581/CH584/CH592 but has 480 KiB of
 CodeFlash at a different engine frame address (`addr + 0x80000`). The basic
@@ -59,9 +58,9 @@ the target's RAM region (CH571/CH573 start at `0x20003800`).
 The DataFlash protocol is not a CodeFlash alias (256-byte `0x81` erase,
 byte-wise `0x02` program, `0x0B` engine reads).
 
-`data` and `data-0x80000` share `src/data_flash.rs` and differ only in whether
-the engine frame address includes the `0x80000` bit. `data-584x` uses its own
-`src/data_flash_584x.rs`: CH584X addresses its 512 KiB DataFlash 0-based in the
+`usr-data` and `usr-data-0x80000` share `src/usr_data.rs` and differ only in
+whether the engine frame address includes the `0x80000` bit. `usr-data-584x`
+uses its own `src/usr_data_584x.rs`: CH584X addresses its 512 KiB DataFlash 0-based in the
 engine and erases in 4 KiB blocks, while probe-rs exposes it at the program-view
 base `0x80000`. That CH584X mapping is inferred from the ISP585 disassembly; no
 board has run it.
@@ -81,12 +80,12 @@ have up to 960 KiB CodeFlash, and CH577/CH578/CH579 are Cortex-M0 parts; none
 of them are covered by `algos-ch5xx/ch5xx`.
 
 `algos-ch5xx/ch569` covers CH565/CH569 CodeFlash (448 KiB) and DataFlash
-(32 KiB at `0x70000`), both in 4 KiB sectors. Its `usr` and `data` binaries
+(32 KiB at `0x70000`), both in 4 KiB sectors. Its `usr-code` and `usr-data` binaries
 share the SYS-block flash window (`0x40001014`/`18`/`1a`), start commands with
 `CTRL=7` rather than the CH57x/CH58x/CH59x `CTRL=5`, and are linked into RAMX
 at `0x20020008`. The engine address space is 32 KiB DataFlash at `0..0x8000`
-followed by CodeFlash at `0x8000..0x78000`, so `usr` sends `CPU + 0x8000` and
-`data` sends `CPU - 0x70000` (`libISPEM569.a` does the same).
+followed by CodeFlash at `0x8000..0x78000`, so `usr-code` sends `CPU + 0x8000` and
+`usr-data` sends `CPU - 0x70000` (`libISPEM569.a` does the same).
 
 `algos-ch5xx/ch564` covers CH564's 192 KiB and 448 KiB CodeFlash layouts plus
 the 32 KiB DataFlash at `0x30000`/`0x70000`. CH564's controller is at

@@ -1,4 +1,4 @@
-//! DataFlash support for CH564.
+//! DataFlash (`usr-data`) support for CH564.
 //!
 //! The 32 KiB DataFlash sits directly after CodeFlash: `0x30000..0x38000` in
 //! the 192 KiB configuration and `0x70000..0x78000` in the 448 KiB one. It is

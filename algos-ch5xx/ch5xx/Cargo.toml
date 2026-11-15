@@ -21,34 +21,28 @@ publish = false
 # and CH591/592.
 [workspace]
 
-# One binary per writable partition, named after the datasheet's flash map:
-# `usr` (用户应用程序存储区, CodeFlash) and `data` (用户非易失数据存储区,
-# DataFlash). The first two DataFlash variants share `src/data_flash.rs`; they
-# differ only in the `0x80000` frame bit and must stay separate binaries because
-# `R8_CHIP_ID` collides across the two ISP generations. `data-584x` uses the
-# engine's 0-based 512 KiB DataFlash mapping and a 4 KiB erase block.
-# `usr` selects the CH584X `+0x80000` engine offset and 480 KiB limit at
-# runtime, after the chip ID check, so it serves CH584X as well.
+# One binary per writable partition: `usr-code` (用户应用程序存储区/CodeFlash)
+# and `usr-data*` (用户非易失数据存储区/DataFlash); see README for the variants.
 [[bin]]
-name = "usr"
+name = "usr-code"
 test = false
 doctest = false
 bench = false
 
 [[bin]]
-name = "data"
+name = "usr-data"
 test = false
 doctest = false
 bench = false
 
 [[bin]]
-name = "data-0x80000"
+name = "usr-data-0x80000"
 test = false
 doctest = false
 bench = false
 
 [[bin]]
-name = "data-584x"
+name = "usr-data-584x"
 test = false
 doctest = false
 bench = false

@@ -1,15 +1,5 @@
-//! DataFlash (EEPROM) support for CH565/CH569.
-//!
-//! The 32 KiB DataFlash occupies `0x70000..0x78000` and shares the SYS-block
-//! flash window at `0x40001014`/`18`/`1a` with CodeFlash. Unlike CodeFlash,
-//! it is erased in 4 KiB blocks with command `0x20`, programmed byte-wise with
-//! `0x02` (no `CTRL=0x15` dword pulses), and read with command `0x0B`.
-//!
-//! The engine's address space starts with this 32 KiB DataFlash, followed by
-//! CodeFlash at `0x8000..0x78000` (`libISPEM569.a`: the `EEPROM_*` helpers
-//! pass the 0-based offset straight to the engine, while the `FLASH_ROMA_*`
-//! helpers add `0x8000`). Sending the CPU address (`0x70000`) instead would
-//! land inside CodeFlash.
+//! CH565/CH569 DataFlash: 32 KiB at `0x70000`, 4 KiB erase, byte-wise program.
+//! The engine sees it 0-based; CodeFlash starts at engine `0x8000`.
 
 use flash_algorithm::{ErrorCode, FlashAlgorithm, Function, algorithm};
 

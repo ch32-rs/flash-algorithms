@@ -21,14 +21,11 @@ const ROMCFG: usize = 0x4000_1004;
 /// CodeFlash is `0x00000..0x70000` (448 KiB) in the CPU map. DataFlash follows
 /// at `0x70000` (32 KiB) and is not mapped here.
 const CODE_LIMIT: u32 = 0x0007_0000;
-/// End of the flash engine's address space (512 KiB). The engine layout is
-/// DataFlash `0..0x8000` followed by CodeFlash `0x8000..0x78000`, so a CPU
-/// CodeFlash address is sent as `addr + 0x8000`; DataFlash is 0-based.
+/// End of the engine address space (DataFlash `0..0x8000`, CodeFlash after it).
 const ROM_LIMIT: u32 = 0x0008_0000;
 
-/// `libISPEM569.a` adds this to CodeFlash addresses in `FLASH_ROMA_ERASE`,
-/// `FLASH_ROMA_WRITE` and `FLASH_ROMA_READ/VERIFY` (`lui a5,0x8; add`), while
-/// the `EEPROM_*` helpers send the 0-based DataFlash offset unchanged.
+/// CodeFlash engine offset: `libISPEM569.a` sends `addr + 0x8000`; the
+/// `EEPROM_*` helpers send DataFlash 0-based.
 const ENGINE_OFFSET: u32 = 0x0000_8000;
 
 /// `RB_ROM_CODE_WE | RB_ROM_DATA_WE | RB_CODE_RAM_WE` = bits 3, 2, 1.

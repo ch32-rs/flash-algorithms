@@ -8,5 +8,5 @@
 #![no_std]
 #![no_main]
 
-#[path = "../data_flash.rs"]
-mod data_flash;
+#[path = "../usr_data.rs"]
+mod usr_data;

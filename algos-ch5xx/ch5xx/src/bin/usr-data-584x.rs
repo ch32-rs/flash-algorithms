@@ -1,4 +1,4 @@
-//! DataFlash algorithm for CH584X.
+//! DataFlash (`usr-data-584x`) algorithm for CH584X.
 //!
 //! CH584X has 512 KiB of DataFlash with no CPU CODE address. probe-rs exposes
 //! it at the program-view address `0x80000..0x100000`; the engine itself is
@@ -8,8 +8,8 @@
 #![no_std]
 #![no_main]
 
-#[path = "../data_flash_584x.rs"]
-mod data_flash_584x;
+#[path = "../usr_data_584x.rs"]
+mod usr_data_584x;
 
 use core::panic::PanicInfo;
 

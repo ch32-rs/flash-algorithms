@@ -1,36 +1,23 @@
-//! DataFlash (EEPROM) support for CH584X.
+//! DataFlash (EEPROM) support for the CH5xx serial flash engine.
 //!
-//! CH584X has 512 KiB of DataFlash but no CPU-mapped address for it. The
-//! ISP585 EEPROM path addresses it 0-based (`0x00000..0x7FFFF`) and erases in
-//! 4 KiB blocks with command `0x20`; programming is byte-wise `0x02` and reads
-//! go through the engine (`0x0B`).
-//!
-//! probe-rs exposes the region at the synthetic program-view address
-//! `0x80000..0x100000`, matching WCH's `FLASH_ROM_*` `+0x80000` convention.
-//! [`frame_addr`] subtracts that base before talking to the engine.
-//!
-//! This whole mapping is an inference from the ISP585 disassembly and the
-//! datasheets; no CH584X board has run it yet.
-//!
-//! This module is deliberately separate from `data_flash.rs`: the
-//! CH571/573/581/582/583/584/585/591/592 binaries are board-tested and keep
-//! their 256-byte erase / `0x70000` frame address.
+//! `usr-data` frames at `0x70000 + off` (ISP573/585), `usr-data-0x80000` at
+//! `0xF0000 + off` (ISP583/592); the YAML picks one per chip (`0x92` is shared).
+//! Erased in 256-byte sectors (`0x81`), programmed byte-wise, read via `0x0B`.
 
 use core::ptr::{read_volatile, write_volatile};
 
-const DATA_START: u32 = 0x0008_0000;
-const DATA_END: u32 = 0x0010_0000;
-const ADDR_SUB: u32 = 0x0008_0000;
-const ERASE_CMD: u8 = 0x20;
-const ERASE_SIZE: u32 = 0x1000;
+/// DataFlash window in the CODE address space.
+const DATA_START: u32 = 0x0007_0000;
+const DATA_END: u32 = 0x0007_8000;
+
+/// Bit OR-ed into the engine frame address. `0` for ISP573/ISP585 parts,
+/// `0x80000` for ISP583/ISP592 parts.
+const OR_MASK: u32 = crate::OR_MASK;
 
 const CTRL: usize = 0x4000_1806;
 const DATA: usize = 0x4000_1804;
 const ROMCFG: usize = 0x4000_1044;
 const SAM: usize = 0x4000_1040;
-const CHIP_ID: usize = 0x4000_1041;
-/// `ROM_CFG_CHIP_ID`; the low nibble is `0x08` only on CH584X.
-const ROM_CFG_CHIP_ID: usize = 0x0007_F024;
 
 #[inline(always)]
 unsafe fn r8(a: usize) -> u8 {
@@ -152,35 +139,6 @@ unsafe fn lock() {
     }
 }
 
-/// The low nibble of `ROM_CFG_CHIP_ID` is `0x08` only on CH584X. This is the
-/// same discriminator `libISP585` uses; `R8_CHIP_ID` and the WCH-Link device id
-/// are shared with CH584.
-///
-/// Check the basic chip ID first, so only the `0x92` group reads `0x7F024`
-/// (reserved on CH570/572). That address is a Flash read — call this at the
-/// top of an entry point, never between unlocking the engine and a command.
-///
-/// Not cached in a `static mut`: the linker would give it an absolute RAM
-/// address, while probe-rs loads this position-independent blob at the start
-/// of the target's RAM region.
-#[inline(always)]
-fn detect_584x() -> bool {
-    unsafe {
-        if read_volatile(CHIP_ID as *const u8) != 0x92 {
-            return false;
-        }
-        // Flash read: must precede `unlock_and_reset`, or the CH592 engine hangs.
-        read_volatile(ROM_CFG_CHIP_ID as *const u32) & 0x0F == 0x08
-    }
-}
-
-/// Convert probe-rs's program-view address to the engine's 0-based DataFlash
-/// frame address.
-#[inline(always)]
-fn frame_addr(addr: u32) -> u32 {
-    addr - ADDR_SUB
-}
-
 #[inline(always)]
 fn in_range(addr: u32, size: u32) -> bool {
     addr >= DATA_START && addr < DATA_END && size <= DATA_END - addr
@@ -190,7 +148,7 @@ fn in_range(addr: u32, size: u32) -> bool {
 unsafe fn erase_block(cmd: u8, at: u32) -> u32 {
     unsafe {
         unlock_and_reset();
-        addr(cmd, frame_addr(at));
+        addr(cmd, at | OR_MASK);
         let st = wait();
         lock();
         if st == 0 { 1 } else { 0 }
@@ -199,11 +157,7 @@ unsafe fn erase_block(cmd: u8, at: u32) -> u32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn init(addr: u32, _clk: u32, _op: u32) -> u32 {
-    if !detect_584x() || addr != DATA_START {
-        1
-    } else {
-        0
-    }
+    if addr == DATA_START { 0 } else { 1 }
 }
 
 #[unsafe(no_mangle)]
@@ -214,39 +168,34 @@ pub extern "C" fn uninit(_op: u32) -> u32 {
     }
 }
 
-/// Erase the 4 KiB DataFlash block containing `sector_addr`.
+/// Erase the 256-byte DataFlash sector containing `sector_addr`.
 #[unsafe(no_mangle)]
 pub extern "C" fn erase_sector(sector_addr: u32) -> u32 {
-    if !detect_584x() {
+    let aligned = sector_addr & !0xff;
+    if !in_range(aligned, 0x100) {
         return 1;
     }
-    let aligned = sector_addr & !(ERASE_SIZE - 1);
-    if !in_range(aligned, ERASE_SIZE) {
-        return 1;
-    }
-    unsafe { erase_block(ERASE_CMD, aligned) }
+    unsafe { erase_block(0x81, aligned) }
 }
 
-/// Erase the whole 512 KiB DataFlash. Kept as a standalone entry point but not
-/// advertised as `pc_erase_all` in the target YAML, so a `probe-rs erase` mass
-/// erase never wipes DataFlash implicitly.
+/// Erase the whole 32 KiB DataFlash. `0x20` is the 4 KiB erase command; the ISP
+/// library uses it for aligned DataFlash ranges. Kept as a standalone entry
+/// point but not advertised as `pc_erase_all` in the target YAML, so a
+/// `probe-rs erase` mass erase never wipes BLE bonding data implicitly.
 #[unsafe(no_mangle)]
 pub extern "C" fn erase_all() -> u32 {
-    if !detect_584x() {
-        return 1;
-    }
     let mut a = DATA_START;
     while a < DATA_END {
-        let r = unsafe { erase_block(ERASE_CMD, a) };
+        let r = unsafe { erase_block(0x20, a) };
         if r != 0 {
             return r;
         }
-        a += ERASE_SIZE;
+        a += 0x1000;
     }
     0
 }
 
-/// Program `size` bytes at program-view address `dest`.
+/// Program `size` bytes at absolute DataFlash address `dest`.
 ///
 /// DataFlash is programmed byte-wise and without the CodeFlash `CTRL=0x15`
 /// pulses; each 256-byte page is a separate `0x02` command.
@@ -255,7 +204,7 @@ pub extern "C" fn program_page(dest: u32, size: u32, buf: *const u8) -> u32 {
     if size == 0 {
         return 0;
     }
-    if !detect_584x() || !in_range(dest, size) {
+    if !in_range(dest, size) {
         return 1;
     }
     unsafe {
@@ -269,7 +218,7 @@ pub extern "C" fn program_page(dest: u32, size: u32, buf: *const u8) -> u32 {
             } else {
                 size - offset
             };
-            addr(0x02, frame_addr(dest + offset));
+            addr(0x02, (dest + offset) | OR_MASK);
             let mut i = 0u32;
             while i < chunk {
                 out(*buf.add((offset + i) as usize));
@@ -286,8 +235,7 @@ pub extern "C" fn program_page(dest: u32, size: u32, buf: *const u8) -> u32 {
     }
 }
 
-/// Read `size` bytes at program-view address `addr` into `buf` through the
-/// flash engine.
+/// Read `size` bytes at `addr` into `buf` through the flash engine.
 ///
 /// probe-rs calls this as `ReadFlash(adr: u32, sz: u32, buf: *mut u8)`, one
 /// `page_size` chunk at a time. Direct bus reads of DataFlash return
@@ -297,12 +245,12 @@ pub extern "C" fn read_flash(addr: u32, size: u32, buf: *mut u8) -> u32 {
     if size == 0 {
         return 0;
     }
-    if !detect_584x() || !in_range(addr, size) {
+    if !in_range(addr, size) {
         return 1;
     }
     unsafe {
         unlock_and_reset();
-        read_addr(0x0b, frame_addr(addr));
+        read_addr(0x0b, addr | OR_MASK);
         let mut i = 0u32;
         while i < size {
             *buf.add(i as usize) = r#in();
