@@ -33,7 +33,8 @@ datasheet's user-area split: `usr-code` (用户应用程序存储区, `CodeFlash
 `usr-data*` (用户非易失数据存储区, `DataFlash`). The probe-rs regions keep the
 datasheet's English names (`CodeFlash` / `DataFlash` / `BootLoader` /
 `InfoFlash`). `BootLoader` (24 KiB at `0x78000`) is mapped read-only and reads
-back correctly over the debug bus; `InfoFlash` reads return the blank sentinel
+back correctly over the debug bus. `InfoFlash` is protected: only a few system
+words near `0x7F000` are readable, the rest returns the blank sentinel
 (`0xF3F9BDA9`, `0xF5F9BDA9` on CH57x/58x). Neither has an erase/write path, so
 there is no `boot`/`info` binary.
 
