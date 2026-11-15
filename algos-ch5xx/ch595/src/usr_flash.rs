@@ -71,7 +71,7 @@ impl FlashAlgorithm for Algo {
         if size == 0 {
             return Ok(());
         }
-        if dest >= CODE_LIMIT || CODE_LIMIT - dest < size {
+        if dest >= CODE_LIMIT || CODE_LIMIT - dest < size || (dest & 3) != 0 {
             return Err(ErrorCode::new(1).unwrap());
         }
         if unsafe { flash_rom::write(dest, data.as_ptr(), size) } {

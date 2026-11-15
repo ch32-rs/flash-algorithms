@@ -5,18 +5,21 @@
 //! it is erased in 4 KiB blocks with command `0x20`, programmed byte-wise with
 //! `0x02` (no `CTRL=0x15` dword pulses), and read with command `0x0B`.
 //!
-//! The engine takes absolute addresses here, just as the CodeFlash algorithm
-//! does; there is no `0x80000` bank bit on CH565/CH569.
+//! The engine's address space starts with this 32 KiB DataFlash, followed by
+//! CodeFlash at `0x8000..0x78000` (`libISPEM569.a`: the `EEPROM_*` helpers
+//! pass the 0-based offset straight to the engine, while the `FLASH_ROMA_*`
+//! helpers add `0x8000`). Sending the CPU address (`0x70000`) instead would
+//! land inside CodeFlash.
 
 use flash_algorithm::{ErrorCode, FlashAlgorithm, Function, algorithm};
 
 const CTRL: usize = 0x4000_101a;
 const DATA: usize = 0x4000_1018;
-const WDATA: usize = 0x4000_1014;
 const SAM: usize = 0x4000_1000;
 const ROMCFG: usize = 0x4000_1004;
 
-/// DataFlash range. CodeFlash ends at `DATA_START`.
+/// DataFlash range in the CPU map. CodeFlash ends at `DATA_START`; the engine
+/// sees the same 32 KiB at `0..0x8000`.
 const DATA_START: u32 = 0x0007_0000;
 const DATA_END: u32 = 0x0007_8000;
 const ERASE_SIZE: u32 = 0x1000;
@@ -91,7 +94,7 @@ impl FlashAlgorithm for Algo {
                 } else {
                     size - offset
                 };
-                addr(0x02, dest + offset);
+                addr(0x02, dest + offset - DATA_START);
                 let mut i = 0u32;
                 while i < chunk {
                     out(data[(offset + i) as usize]);
@@ -112,37 +115,29 @@ impl FlashAlgorithm for Algo {
         }
     }
 
-    /// Read DataFlash through the engine. Direct debug reads of the flash
-    /// window return the `0xF3F9BDA9` placeholder, so a `pc_read` entry point
-    /// is required for probe-rs `--verify`.
+    /// Read DataFlash through the engine, one byte per `FLASH_ROM_IN` as the
+    /// official `EEPROM_READ` does (unlike the `FLASH_ROMA_READ` word path).
+    /// Direct debug reads of the flash window return the `0xF3F9BDA9`
+    /// placeholder, so a `pc_read` entry point is required for `--verify`.
     fn read_flash(&mut self, address: u32, data: &mut [u8]) -> Result<(), ErrorCode> {
         let size = data.len() as u32;
         if size == 0 {
             return Ok(());
         }
-        if address < DATA_START || DATA_END - address < size || (size & 3) != 0 {
+        if address < DATA_START || DATA_END - address < size {
             return Err(ErrorCode::new(1).unwrap());
         }
         unsafe {
-            let mut offset = 0u32;
-            while offset < size {
-                let chunk = if size - offset > PAGE_SIZE {
-                    PAGE_SIZE
-                } else {
-                    size - offset
-                };
-                addr(0x0b, address + offset);
-                // The engine's read frame leaves two bytes before the data.
-                let _ = r#in();
-                let _ = r#in();
-                let mut i = 0u32;
-                while i < chunk {
-                    data[(offset + i) as usize..][..4].copy_from_slice(&word_in().to_le_bytes());
-                    i += 4;
-                }
-                end();
-                offset += chunk;
+            addr(0x0b, address - DATA_START);
+            // The read frame leaves two bytes before the data.
+            let _ = r#in();
+            let _ = r#in();
+            let mut i = 0u32;
+            while i < size {
+                data[i as usize] = r#in();
+                i += 1;
             }
+            end();
         }
         Ok(())
     }
@@ -152,7 +147,7 @@ impl Algo {
     fn erase_block(&mut self, cmd: u8, addr_at: u32) -> Result<(), ErrorCode> {
         unsafe {
             unlock();
-            addr(cmd, addr_at);
+            addr(cmd, addr_at - DATA_START);
             let st = wait();
             lock();
             if st == 0 {
@@ -233,19 +228,6 @@ unsafe fn addr(c: u8, mut a: u32) {
                 break;
             }
         }
-    }
-}
-
-/// Read one 32-bit word. The data register only clocks the transfer; the
-/// latched word is read from `WDATA`, as the official loader does.
-#[inline(always)]
-unsafe fn word_in() -> u32 {
-    unsafe {
-        let _ = r#in();
-        let _ = r#in();
-        let _ = r#in();
-        let _ = r#in();
-        core::ptr::read_volatile(WDATA as *const u32)
     }
 }
 

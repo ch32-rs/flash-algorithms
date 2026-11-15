@@ -5,8 +5,10 @@
 //! `0x4000_1800..0x4000_1820`. The sequence follows the public
 //! `EVT/EXAM/SRC/StdPeriphDriver/CH59x_flash.c`:
 //!
-//! - unlock with the `0x57`/`0xA8` safe-access signature, then write
-//!   `R32_GLOBAL_CONFIG = 0xE1` to open the erase/program channel;
+//! - turn off safe-access auto-close (`R16_SLP_WAKE_CFG`), then unlock with the
+//!   `0x57`/`0xA8` signature and write `R32_GLOBAL_CONFIG = 0xE1` to open the
+//!   erase/program channel; the signature only opens a short window, so nothing
+//!   else is allowed in between;
 //! - pre-program (`R8_PREPG_CTRL`) and erase (`R8_ERASE_CTRL`) the range;
 //! - clear the 256-byte page latch (`R8_BUF_CTRL` bit 0), load it through
 //!   `R32_FLASH_DATA` with address auto-increment, then start page program
@@ -104,12 +106,17 @@ unsafe fn unlock() {
         core::arch::asm!("csrci mstatus, 8");
         w8(SAFE_ACCESS_SIG, SIG1);
         w8(SAFE_ACCESS_SIG, SIG2);
+        // The official `sys_safe_access_enable()` fences after the signature.
+        core::arch::asm!("fence.i");
     }
 }
 
 #[inline(always)]
 unsafe fn lock() {
-    unsafe { w8(SAFE_ACCESS_SIG, 0) }
+    unsafe {
+        w8(SAFE_ACCESS_SIG, 0);
+        core::arch::asm!("fence.i");
+    }
 }
 
 /// Wait until the controller clears `RB_CTRL_BUSY` and raises
@@ -139,8 +146,12 @@ unsafe fn ready() -> bool {
 /// stays open across the long pre-program/erase/program waits.
 unsafe fn open() {
     unsafe {
-        unlock();
+        // `CH59x_flash.c` turns auto-close off *before* the safe-access
+        // signature, then writes `GLOBAL_CONFIG` immediately: the signature
+        // only opens a ~16-cycle window, and a read-modify-write in between can
+        // make the `0xe1` write fall outside it.
         w16(SLP_WAKE_CFG, r16(SLP_WAKE_CFG) & !ACAUTO_ENABLE);
+        unlock();
         w32(GLOBAL_CONFIG, 0xe1);
         w8(READ_CTRL, 0);
         w8(READ_CTRL, 3 << 4);

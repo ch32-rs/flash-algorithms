@@ -9,6 +9,9 @@
 //! `0x80000..0x100000`, matching WCH's `FLASH_ROM_*` `+0x80000` convention.
 //! [`frame_addr`] subtracts that base before talking to the engine.
 //!
+//! This whole mapping is an inference from the ISP585 disassembly and the
+//! datasheets; no CH584X board has run it yet.
+//!
 //! This module is deliberately separate from `data_flash.rs`: the
 //! CH571/573/581/582/583/584/585/591/592 binaries are board-tested and keep
 //! their 256-byte erase / `0x70000` frame address.
@@ -149,21 +152,17 @@ unsafe fn lock() {
     }
 }
 
-/// Set once in `init`.
-static mut IS_584X: bool = false;
-
-#[inline(always)]
-fn is_584x() -> bool {
-    unsafe { IS_584X }
-}
-
 /// The low nibble of `ROM_CFG_CHIP_ID` is `0x08` only on CH584X. This is the
 /// same discriminator `libISP585` uses; `R8_CHIP_ID` and the WCH-Link device id
 /// are shared with CH584.
 ///
 /// Check the basic chip ID first, so only the `0x92` group reads `0x7F024`
-/// (reserved on CH570/572). That address is a Flash read — sample it once in
-/// `init`, never between unlocking the engine and a command.
+/// (reserved on CH570/572). That address is a Flash read — call this at the
+/// top of an entry point, never between unlocking the engine and a command.
+///
+/// Not cached in a `static mut`: the linker would give it an absolute RAM
+/// address, while probe-rs loads this position-independent blob at the start
+/// of the target's RAM region.
 #[inline(always)]
 fn detect_584x() -> bool {
     unsafe {
@@ -200,8 +199,7 @@ unsafe fn erase_block(cmd: u8, at: u32) -> u32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn init(addr: u32, _clk: u32, _op: u32) -> u32 {
-    unsafe { IS_584X = detect_584x() };
-    if !is_584x() || addr != DATA_START {
+    if !detect_584x() || addr != DATA_START {
         1
     } else {
         0
@@ -219,7 +217,7 @@ pub extern "C" fn uninit(_op: u32) -> u32 {
 /// Erase the 4 KiB DataFlash block containing `sector_addr`.
 #[unsafe(no_mangle)]
 pub extern "C" fn erase_sector(sector_addr: u32) -> u32 {
-    if !is_584x() {
+    if !detect_584x() {
         return 1;
     }
     let aligned = sector_addr & !(ERASE_SIZE - 1);
@@ -234,7 +232,7 @@ pub extern "C" fn erase_sector(sector_addr: u32) -> u32 {
 /// erase never wipes DataFlash implicitly.
 #[unsafe(no_mangle)]
 pub extern "C" fn erase_all() -> u32 {
-    if !is_584x() {
+    if !detect_584x() {
         return 1;
     }
     let mut a = DATA_START;
@@ -257,7 +255,7 @@ pub extern "C" fn program_page(dest: u32, size: u32, buf: *const u8) -> u32 {
     if size == 0 {
         return 0;
     }
-    if !is_584x() || !in_range(dest, size) {
+    if !detect_584x() || !in_range(dest, size) {
         return 1;
     }
     unsafe {
@@ -299,7 +297,7 @@ pub extern "C" fn read_flash(addr: u32, size: u32, buf: *mut u8) -> u32 {
     if size == 0 {
         return 0;
     }
-    if !is_584x() || !in_range(addr, size) {
+    if !detect_584x() || !in_range(addr, size) {
         return 1;
     }
     unsafe {

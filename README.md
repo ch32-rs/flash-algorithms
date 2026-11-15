@@ -50,24 +50,29 @@ CodeFlash at a different engine frame address (`addr + 0x80000`). The basic
 chip ID is checked first, and only the `0x92` group reads the ISP585 model code
 `(*(uint32_t *)0x7F024 & 0x0F) == 0x08` to select the CH584X path; ISP585's
 conservative 448 KiB `RB_BOOT_LOADER` limit applies when `R8_GLOB_CFG_INFO`
-bit 5 is set. That discriminator is sampled once in `init`: it is a Flash read,
-and reading Flash between `unlock_and_reset` and the erase command leaves the
-CH592 engine busy forever.
+bit 5 is set. That discriminator is a Flash read, so it is checked at the top
+of every entry point, before `unlock_and_reset`: reading Flash between the
+unlock and the erase command leaves the CH592 engine busy forever. It is not
+cached in a `static mut`, because the linker would place that at an absolute
+RAM address while probe-rs loads this position-independent blob at the start of
+the target's RAM region (CH571/CH573 start at `0x20003800`).
 The DataFlash protocol is not a CodeFlash alias (256-byte `0x81` erase,
 byte-wise `0x02` program, `0x0B` engine reads).
 
 `data` and `data-0x80000` share `src/data_flash.rs` and differ only in whether
-the engine frame address includes the `0x80000` bit. `data-584x` uses its own `src/data_flash_584x.rs`: CH584X
-addresses its 512 KiB DataFlash 0-based in the engine and erases in 4 KiB
-blocks, while probe-rs exposes it at the program-view base `0x80000`.
+the engine frame address includes the `0x80000` bit. `data-584x` uses its own
+`src/data_flash_584x.rs`: CH584X addresses its 512 KiB DataFlash 0-based in the
+engine and erases in 4 KiB blocks, while probe-rs exposes it at the program-view
+base `0x80000`. That CH584X mapping is inferred from the ISP585 disassembly; no
+board has run it.
 
 The binaries are selected statically in the probe-rs target YAML because
 `R8_CHIP_ID` collides between the generations: `0x92` covers CH581 and CH584
-(no bank bit) as well as CH592 (bank bit). CH584X also shares `0x92` and the
-WCH-Link device id with CH584, so `--chip CH584X` is required for the target
-memory map; both algorithms check `R8_CHIP_ID == 0x92` first and only then
-read the ISP585 model code at `0x7F024` (reserved on CH570/572), sampling it
-once in `init`. CH570/CH572 have no DataFlash.
+(no `0x80000` bit) as well as CH592 (`0x80000` set). CH584X also shares `0x92`
+and the WCH-Link device id with CH584, so `--chip CH584X` is required for the
+target memory map; both algorithms check `R8_CHIP_ID == 0x92` first and only
+then read the ISP585 model code at `0x7F024` (reserved on CH570/572). CH570/CH572
+have no DataFlash.
 
 CH595/CH596 use a newer hardware pre-program/erase/page-latch Flash controller
 at `0x40001800..0x40001820` (`CH59x_flash.c`) rather than the SPI-like
@@ -79,7 +84,9 @@ of them are covered by `algos-ch5xx/ch5xx`.
 (32 KiB at `0x70000`), both in 4 KiB sectors. Its `usr` and `data` binaries
 share the SYS-block flash window (`0x40001014`/`18`/`1a`), start commands with
 `CTRL=7` rather than the CH57x/CH58x/CH59x `CTRL=5`, and are linked into RAMX
-at `0x20020008`.
+at `0x20020008`. The engine address space is 32 KiB DataFlash at `0..0x8000`
+followed by CodeFlash at `0x8000..0x78000`, so `usr` sends `CPU + 0x8000` and
+`data` sends `CPU - 0x70000` (`libISPEM569.a` does the same).
 
 `algos-ch5xx/ch564` covers CH564's 192 KiB and 448 KiB CodeFlash layouts plus
 the 32 KiB DataFlash at `0x30000`/`0x70000`. CH564's controller is at
