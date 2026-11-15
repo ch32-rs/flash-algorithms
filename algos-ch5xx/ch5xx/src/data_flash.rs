@@ -5,7 +5,7 @@
 //!
 //! - `data`      (`OR_MASK = 0`): frame address is `0x70000 + off`.
 //!   Used by CH571/CH573 (ISP573), CH581/CH584/CH585 (ISP585).
-//! - `data-bank` (`OR_MASK = 0x80000`): frame address is `0xF0000 + off`.
+//! - `data-0x80000` (`OR_MASK = 0x80000`): frame address is `0xF0000 + off`.
 //!   Used by CH582/CH583 (ISP583), CH591/CH592 (ISP592).
 //!
 //! The two variants cannot be merged into one binary and dispatched at runtime

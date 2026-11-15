@@ -42,7 +42,7 @@ doctest = false
 bench = false
 
 [[bin]]
-name = "data-bank"
+name = "data-0x80000"
 test = false
 doctest = false
 bench = false

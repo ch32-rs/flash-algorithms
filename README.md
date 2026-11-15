@@ -30,18 +30,18 @@ region (CH32 naming). VND (vendor / ESIG) is read-only and not programmed.
 
 `algos-ch5xx/ch5xx` is a standalone workspace crate. Its binaries are named
 after the datasheet's flash partitions — `usr` (用户应用程序存储区, `CodeFlash`)
-and `data` (用户非易失数据存储区, `DataFlash`) — with `data-bank`/`data-584x`
+and `data` (用户非易失数据存储区, `DataFlash`) — with `data-0x80000`/`data-584x`
 for the two DataFlash framings. The probe-rs regions keep the datasheet's
 English names (`CodeFlash` / `DataFlash` / `InfoFlash`). `InfoFlash` is a
 read-only region; `BootLoader` is not mapped: its controller has no erase/write
 enable, so there is no `boot`/`sys` binary.
 
-| Binary      | Region      | Frame address   | Chips                            |
-| ----------- | ----------- | --------------- | -------------------------------- |
-| `usr`       | `CodeFlash` | absolute; `addr + 0x80000` on CH584X | CH570/571/572/573, CH581/582/583/584/585, CH591/592, CH584X |
-| `data`      | `DataFlash` | `0x70000 + off` | CH571/CH573, CH581/CH584/CH585   |
-| `data-bank` | `DataFlash` | `0xF0000 + off` | CH582/CH583, CH591/CH592         |
-| `data-584x` | `DataFlash` | 0-based engine  | CH584X                           |
+| Binary         | Region      | Frame address                        | Chips                                                       |
+| -------------- | ----------- | ------------------------------------ | ----------------------------------------------------------- |
+| `usr`          | `CodeFlash` | absolute; `addr + 0x80000` on CH584X | CH570/571/572/573, CH581/582/583/584/585, CH591/592, CH584X |
+| `data`         | `DataFlash` | `0x70000 + off`                      | CH571/CH573, CH581/CH584/CH585                              |
+| `data-0x80000` | `DataFlash` | `0xF0000 + off`                      | CH582/CH583, CH591/CH592                                    |
+| `data-584x`    | `DataFlash` | 0-based engine                       | CH584X                                                      |
 
 `usr` is position-independent and shared across the family; it enforces the
 per-chip CodeFlash ceiling dynamically via `R8_CHIP_ID` (`0x40001041`).
@@ -56,8 +56,8 @@ CH592 engine busy forever.
 The DataFlash protocol is not a CodeFlash alias (256-byte `0x81` erase,
 byte-wise `0x02` program, `0x0B` engine reads).
 
-`data` and `data-bank` share `src/data_flash.rs` and differ only in the
-`0x80000` bank bit. `data-584x` uses its own `src/data_flash_584x.rs`: CH584X
+`data` and `data-0x80000` share `src/data_flash.rs` and differ only in whether
+the engine frame address includes the `0x80000` bit. `data-584x` uses its own `src/data_flash_584x.rs`: CH584X
 addresses its 512 KiB DataFlash 0-based in the engine and erases in 4 KiB
 blocks, while probe-rs exposes it at the program-view base `0x80000`.
 
