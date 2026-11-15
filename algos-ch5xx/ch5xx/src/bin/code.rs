@@ -33,16 +33,30 @@ unsafe fn w32(a: usize, v: u32) {
     unsafe { core::ptr::write_volatile(a as *mut u32, v) }
 }
 
-// CH584X compatibility: check the basic chip ID first, so only the 0x92 group
-// reads the ISP585 model code at 0x7F024.
-#[inline(always)]
-unsafe fn is_584x_with(id: u8) -> bool {
-    id == 0x92 && unsafe { core::ptr::read_volatile(ROM_CFG_CHIP_ID as *const u32) & 0x0f == 0x08 }
-}
+/// Set once in `init`.
+static mut IS_584X: bool = false;
 
 #[inline(always)]
 unsafe fn is_584x() -> bool {
-    unsafe { is_584x_with(r8(CHIP_ID)) }
+    unsafe { IS_584X }
+}
+
+/// CH584X compatibility: check the basic chip ID first, so only the `0x92`
+/// group reads the ISP585 model code at `0x7F024`.
+///
+/// `0x7F024` is a Flash read, so this runs once from `init`, before the engine
+/// is unlocked. Reading Flash between `unlock_and_reset` and the erase command
+/// leaves the CH592 engine busy forever. WCH's `libISP585` reads it before its
+/// own unlock for the same reason.
+#[inline(always)]
+unsafe fn detect_584x() -> bool {
+    unsafe {
+        if r8(CHIP_ID) != 0x92 {
+            return false;
+        }
+        // Flash read: must precede `unlock_and_reset`, or the CH592 engine hangs.
+        core::ptr::read_volatile(ROM_CFG_CHIP_ID as *const u32) & 0x0f == 0x08
+    }
 }
 
 /// Returns the CodeFlash size limit in bytes based on `R8_CHIP_ID` (`0x40001041`).
@@ -57,8 +71,7 @@ unsafe fn is_584x() -> bool {
 /// `0x40001800..0x40001820` (`CH59x_flash.c`) and is not covered by this crate.
 #[inline(always)]
 unsafe fn flash_limit() -> u32 {
-    let id = unsafe { r8(CHIP_ID) };
-    if unsafe { is_584x_with(id) } {
+    if unsafe { is_584x() } {
         return unsafe {
             // 480 KiB, or ISP585's conservative 448 KiB while
             // `RB_BOOT_LOADER` (`R8_GLOB_CFG_INFO` bit 5) is set.
@@ -69,6 +82,7 @@ unsafe fn flash_limit() -> u32 {
             }
         };
     }
+    let id = unsafe { r8(CHIP_ID) };
     if id == 0x71 || id == 0x91 {
         0x0003_0000 // CH571, CH591: 192 KiB
     } else if id == 0x70 || id == 0x72 {
@@ -212,7 +226,10 @@ unsafe fn lock() {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn init(addr: u32, _clk: u32, _fn_code: u32) -> u32 {
-    unsafe { if addr >= flash_limit() { 1 } else { 0 } }
+    unsafe {
+        IS_584X = detect_584x();
+        if addr >= flash_limit() { 1 } else { 0 }
+    }
 }
 
 #[unsafe(no_mangle)]

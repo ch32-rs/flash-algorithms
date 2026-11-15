@@ -25,6 +25,7 @@ const CTRL: usize = 0x4000_1806;
 const DATA: usize = 0x4000_1804;
 const ROMCFG: usize = 0x4000_1044;
 const SAM: usize = 0x4000_1040;
+const CHIP_ID: usize = 0x4000_1041;
 /// `ROM_CFG_CHIP_ID`; the low nibble is `0x08` only on CH584X.
 const ROM_CFG_CHIP_ID: usize = 0x0007_F024;
 
@@ -148,12 +149,30 @@ unsafe fn lock() {
     }
 }
 
+/// Set once in `init`.
+static mut IS_584X: bool = false;
+
+#[inline(always)]
+fn is_584x() -> bool {
+    unsafe { IS_584X }
+}
+
 /// The low nibble of `ROM_CFG_CHIP_ID` is `0x08` only on CH584X. This is the
 /// same discriminator `libISP585` uses; `R8_CHIP_ID` and the WCH-Link device id
 /// are shared with CH584.
+///
+/// Check the basic chip ID first, so only the `0x92` group reads `0x7F024`
+/// (reserved on CH570/572). That address is a Flash read — sample it once in
+/// `init`, never between unlocking the engine and a command.
 #[inline(always)]
-fn is_584x() -> bool {
-    unsafe { read_volatile(ROM_CFG_CHIP_ID as *const u32) & 0x0F == 0x08 }
+fn detect_584x() -> bool {
+    unsafe {
+        if read_volatile(CHIP_ID as *const u8) != 0x92 {
+            return false;
+        }
+        // Flash read: must precede `unlock_and_reset`, or the CH592 engine hangs.
+        read_volatile(ROM_CFG_CHIP_ID as *const u32) & 0x0F == 0x08
+    }
 }
 
 /// Convert probe-rs's program-view address to the engine's 0-based DataFlash
@@ -181,6 +200,7 @@ unsafe fn erase_block(cmd: u8, at: u32) -> u32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn init(addr: u32, _clk: u32, _op: u32) -> u32 {
+    unsafe { IS_584X = detect_584x() };
     if !is_584x() || addr != DATA_START {
         1
     } else {
