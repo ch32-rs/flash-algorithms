@@ -33,10 +33,12 @@ datasheet's user-area split: `usr-code` (用户应用程序存储区, `CodeFlash
 `usr-data*` (用户非易失数据存储区, `DataFlash`). The probe-rs regions keep the
 datasheet's English names (`CodeFlash` / `DataFlash` / `BootLoader` /
 `InfoFlash`). `BootLoader` (24 KiB at `0x78000`) is mapped read-only and reads
-back correctly over the debug bus. `InfoFlash` is protected: only a few system
-words near `0x7F000` are readable, the rest returns the blank sentinel
-(`0xF3F9BDA9`, `0xF5F9BDA9` on CH57x/58x). Neither has an erase/write path, so
-there is no `boot`/`info` binary.
+back correctly over the debug bus. The 8 KiB info block is split like the
+datasheet: `UserInfo` (`0x7E000..0x7F000`, tool-settable user config) and
+`InfoFlash` (`0x7F000..0x80000`, undocumented system area). Both are read-only;
+only a few words are programmed and the rest reads as the blank sentinel
+(`0xF3F9BDA9`, `0xF5F9BDA9` on CH57x/58x). There is no `boot` or `info` binary:
+neither area has an erase/write path.
 
 | Binary             | Region      | Frame address                        | Chips                                                       |
 | ------------------ | ----------- | ------------------------------------ | ----------------------------------------------------------- |
