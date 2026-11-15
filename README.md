@@ -31,9 +31,11 @@ region (CH32 naming). VND (vendor / ESIG) is read-only and not programmed.
 `algos-ch5xx/ch5xx` is a standalone workspace crate. Its binaries follow the
 datasheet's user-area split: `usr-code` (用户应用程序存储区, `CodeFlash`) and
 `usr-data*` (用户非易失数据存储区, `DataFlash`). The probe-rs regions keep the
-datasheet's English names (`CodeFlash` / `DataFlash` / `InfoFlash`). `InfoFlash`
-is read-only and `BootLoader` has no erase/write enable, so there is no
-`boot`/`info` binary.
+datasheet's English names (`CodeFlash` / `DataFlash` / `BootLoader` /
+`InfoFlash`). `BootLoader` (24 KiB at `0x78000`) is mapped read-only and reads
+back correctly over the debug bus; `InfoFlash` reads return the blank sentinel
+(`0xF3F9BDA9`, `0xF5F9BDA9` on CH57x/58x). Neither has an erase/write path, so
+there is no `boot`/`info` binary.
 
 | Binary             | Region      | Frame address                        | Chips                                                       |
 | ------------------ | ----------- | ------------------------------------ | ----------------------------------------------------------- |
