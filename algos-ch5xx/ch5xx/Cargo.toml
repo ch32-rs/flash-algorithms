@@ -26,16 +26,10 @@ publish = false
 # in the `0x80000` frame bit and must stay separate binaries because
 # `R8_CHIP_ID` collides across the two ISP generations. `data-584x` uses the
 # engine's 0-based 512 KiB DataFlash mapping and a 4 KiB erase block.
-# `code-584x` is separate because CH584X CodeFlash needs the `+0x80000` engine
-# offset and a 480 KiB limit, while `R8_CHIP_ID` is shared with CH584.
+# `code` selects the CH584X `+0x80000` engine offset and 480 KiB limit at
+# runtime, after the chip ID check, so it serves CH584X as well.
 [[bin]]
 name = "code"
-test = false
-doctest = false
-bench = false
-
-[[bin]]
-name = "code-584x"
 test = false
 doctest = false
 bench = false

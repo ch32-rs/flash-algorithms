@@ -12,8 +12,11 @@ const CTRL: usize = 0x4000_1806;
 const DATA: usize = 0x4000_1804;
 const WDATA: usize = 0x4000_1800;
 const ROMCFG: usize = 0x4000_1044;
+const GLOB_CFG_INFO: usize = 0x4000_1045;
 const CHIP_ID: usize = 0x4000_1041;
 const SAM: usize = 0x4000_1040;
+/// `ROM_CFG_CHIP_ID`; the low nibble is `0x08` only on CH584X.
+const ROM_CFG_CHIP_ID: usize = 0x0007_F024;
 
 #[inline(always)]
 unsafe fn r8(a: usize) -> u8 {
@@ -30,6 +33,18 @@ unsafe fn w32(a: usize, v: u32) {
     unsafe { core::ptr::write_volatile(a as *mut u32, v) }
 }
 
+// CH584X compatibility: check the basic chip ID first, so only the 0x92 group
+// reads the ISP585 model code at 0x7F024.
+#[inline(always)]
+unsafe fn is_584x_with(id: u8) -> bool {
+    id == 0x92 && unsafe { core::ptr::read_volatile(ROM_CFG_CHIP_ID as *const u32) & 0x0f == 0x08 }
+}
+
+#[inline(always)]
+unsafe fn is_584x() -> bool {
+    unsafe { is_584x_with(r8(CHIP_ID)) }
+}
+
 /// Returns the CodeFlash size limit in bytes based on `R8_CHIP_ID` (`0x40001041`).
 ///
 /// Note on CH571/CH573 (`0x71`/`0x73`): the SVD splits `RESET_STATUS`/`GLOB_ROM_CFG`
@@ -43,6 +58,17 @@ unsafe fn w32(a: usize, v: u32) {
 #[inline(always)]
 unsafe fn flash_limit() -> u32 {
     let id = unsafe { r8(CHIP_ID) };
+    if unsafe { is_584x_with(id) } {
+        return unsafe {
+            // 480 KiB, or ISP585's conservative 448 KiB while
+            // `RB_BOOT_LOADER` (`R8_GLOB_CFG_INFO` bit 5) is set.
+            if r8(GLOB_CFG_INFO) & 0x20 != 0 {
+                0x0007_0000
+            } else {
+                0x0007_8000
+            }
+        };
+    }
     if id == 0x71 || id == 0x91 {
         0x0003_0000 // CH571, CH591: 192 KiB
     } else if id == 0x70 || id == 0x72 {
@@ -89,6 +115,10 @@ unsafe fn out(v: u8) {
 #[inline(always)]
 unsafe fn addr(c: u8, mut a: u32) {
     unsafe {
+        // CH584X addresses CodeFlash at engine `CPU + 0x80000`.
+        if is_584x() {
+            a += 0x0008_0000;
+        }
         if (c & 0xbf) != 0x0b {
             beg(6);
             end();
@@ -103,6 +133,19 @@ unsafe fn addr(c: u8, mut a: u32) {
                 break;
             }
         }
+    }
+}
+
+/// `0x0B` frame read: five address bytes (24-bit address plus two zero bytes).
+#[inline(always)]
+unsafe fn read_addr(c: u8, a: u32) {
+    unsafe {
+        beg(c);
+        out((a >> 16) as u8);
+        out((a >> 8) as u8);
+        out(a as u8);
+        out(0);
+        out(0);
     }
 }
 
@@ -262,4 +305,36 @@ pub extern "C" fn program_page(dest: u32, size: u32, buf: *const u8) -> u32 {
         lock();
         if ok { 0 } else { 1 }
     }
+}
+
+/// Read CodeFlash through the engine. A halted debug read of the CH5xx
+/// CodeFlash area returns a scrambled placeholder, so this is the `--verify`
+/// path for the CH584X entry.
+#[unsafe(no_mangle)]
+pub extern "C" fn read_flash(start: u32, size: u32, buf: *mut u8) -> u32 {
+    if size == 0 {
+        return 0;
+    }
+    let limit = unsafe { flash_limit() };
+    if start >= limit || limit - start < size {
+        return 1;
+    }
+    if !unsafe { is_584x() } {
+        for i in 0..size {
+            unsafe { *buf.add(i as usize) = r8((start + i) as usize) };
+        }
+        return 0;
+    }
+    unsafe {
+        unlock_and_reset();
+        read_addr(0x0b, start + 0x0008_0000);
+        let mut i = 0u32;
+        while i < size {
+            *buf.add(i as usize) = r#in();
+            i += 1;
+        }
+        end();
+        lock();
+    }
+    0
 }

@@ -20,7 +20,7 @@ unify two ch32-metapac chip features, so the lib is duplicated.
 | `algos/l1`   | `flash_l1`       | `riscv32imac-unknown-none-elf`     | CH32L103                   |
 | `algos/h4`   | `flash_h4`       | `riscv32imac-unknown-none-elf`     | CH32H415/H416/H417         |
 | `algos/f1`          | `flash_v1`       | `thumbv7m-none-eabi`               | CH32F103 (Cortex-M3)       |
-| `algos-ch5xx/ch5xx` | `FLASH_ROM`      | `riscv32imac-unknown-none-elf`     | CH570/571/572/573, CH581/582/583/584/585, CH591/592 (PIC CodeFlash + DataFlash) |
+| `algos-ch5xx/ch5xx` | `FLASH_ROM`      | `riscv32imac-unknown-none-elf`     | CH570/571/572/573, CH581/582/583/584/585, CH591/592, CH584X (PIC CodeFlash + DataFlash) |
 | `algos-ch5xx/ch569` | `FLASH_ROM`      | `riscv32imac-unknown-none-elf`     | CH565/CH569 (CodeFlash + DataFlash) |
 | `algos-ch5xx/ch564` | `FLASH_ROM`      | `riscv32imac-unknown-none-elf`     | CH564 (192K/448K configurations, CodeFlash + DataFlash) |
 | `algos-ch5xx/ch595` | `FLASH_ROM`      | `riscv32imac-unknown-none-elf`     | CH595, CH596 (page-latch CodeFlash) |
@@ -36,19 +36,19 @@ mapped.
 
 | Binary      | Region      | Frame address   | Chips                            |
 | ----------- | ----------- | --------------- | -------------------------------- |
-| `code`      | `CodeFlash` | absolute        | CH570/571/572/573, CH581/582/583/584/585, CH591/592 |
-| `code-584x` | `CodeFlash` | `addr + 0x80000` | CH584X                           |
+| `code`      | `CodeFlash` | absolute; `addr + 0x80000` on CH584X | CH570/571/572/573, CH581/582/583/584/585, CH591/592, CH584X |
 | `data`      | `DataFlash` | `0x70000 + off` | CH571/CH573, CH581/CH584/CH585   |
 | `data-bank` | `DataFlash` | `0xF0000 + off` | CH582/CH583, CH591/CH592         |
 | `data-584x` | `DataFlash` | 0-based engine  | CH584X                           |
 
 `code` is position-independent and shared across the family; it enforces the
 per-chip CodeFlash ceiling dynamically via `R8_CHIP_ID` (`0x40001041`).
-`code-584x` is separate because CH584X shares `R8_CHIP_ID` (`0x92`) with CH584
-but has 480 KiB of CodeFlash at a different engine frame address
-(`addr + 0x80000`); it verifies `(*(uint32_t *)0x7F024 & 0x0F) == 0x08` and
-uses ISP585's conservative 448 KiB `RB_BOOT_LOADER` limit when
-`R8_GLOB_CFG_INFO` bit 5 is set.
+CH584X shares `R8_CHIP_ID` (`0x92`) with CH581/CH584/CH592 but has 480 KiB of
+CodeFlash at a different engine frame address (`addr + 0x80000`). The basic
+chip ID is checked first, and only the `0x92` group reads the ISP585 model code
+`(*(uint32_t *)0x7F024 & 0x0F) == 0x08` to select the CH584X path; ISP585's
+conservative 448 KiB `RB_BOOT_LOADER` limit applies when `R8_GLOB_CFG_INFO`
+bit 5 is set.
 The DataFlash protocol is not a CodeFlash alias (256-byte `0x81` erase,
 byte-wise `0x02` program, `0x0B` engine reads).
 
@@ -60,9 +60,10 @@ blocks, while probe-rs exposes it at the program-view base `0x80000`.
 The binaries are selected statically in the probe-rs target YAML because
 `R8_CHIP_ID` collides between the generations: `0x92` covers CH581 and CH584
 (no bank bit) as well as CH592 (bank bit). CH584X also shares `0x92` and the
-WCH-Link device id with CH584, so `--chip CH584X` is required; both 584X
-algorithms verify `(*(uint32_t *)0x7F024 & 0x0F) == 0x08`. CH570/CH572 have
-no DataFlash.
+WCH-Link device id with CH584, so `--chip CH584X` is required for the target
+memory map; the `code` algorithm detects CH584X at runtime, and `data-584x`
+verifies `(*(uint32_t *)0x7F024 & 0x0F) == 0x08`. CH570/CH572 have no
+DataFlash.
 
 CH595/CH596 use a newer hardware pre-program/erase/page-latch Flash controller
 at `0x40001800..0x40001820` (`CH59x_flash.c`) rather than the SPI-like
