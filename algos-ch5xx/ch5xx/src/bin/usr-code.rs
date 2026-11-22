@@ -12,8 +12,11 @@ const CTRL: usize = 0x4000_1806;
 const DATA: usize = 0x4000_1804;
 const WDATA: usize = 0x4000_1800;
 const ROMCFG: usize = 0x4000_1044;
+const GLOB_CFG_INFO: usize = 0x4000_1045;
 const CHIP_ID: usize = 0x4000_1041;
 const SAM: usize = 0x4000_1040;
+/// `ROM_CFG_CHIP_ID`; the low nibble is `0x08` only on CH584X.
+const ROM_CFG_CHIP_ID: usize = 0x0007_F024;
 
 #[inline(always)]
 unsafe fn r8(a: usize) -> u8 {
@@ -30,6 +33,19 @@ unsafe fn w32(a: usize, v: u32) {
     unsafe { core::ptr::write_volatile(a as *mut u32, v) }
 }
 
+/// CH584X check; reads Flash at `0x7F024`, so call it before unlocking the
+/// engine. Not cached: a `static` would get an absolute address from `link.ld`.
+#[inline(always)]
+unsafe fn detect_584x() -> bool {
+    unsafe {
+        if r8(CHIP_ID) != 0x92 {
+            return false;
+        }
+        // Flash read: must precede `unlock_and_reset`, or the CH592 engine hangs.
+        core::ptr::read_volatile(ROM_CFG_CHIP_ID as *const u32) & 0x0f == 0x08
+    }
+}
+
 /// Returns the CodeFlash size limit in bytes based on `R8_CHIP_ID` (`0x40001041`).
 ///
 /// Note on CH571/CH573 (`0x71`/`0x73`): the SVD splits `RESET_STATUS`/`GLOB_ROM_CFG`
@@ -41,7 +57,18 @@ unsafe fn w32(a: usize, v: u32) {
 /// Note: CH595 uses a newer hardware pre-program/page-latch Flash controller at
 /// `0x40001800..0x40001820` (`CH59x_flash.c`) and is not covered by this crate.
 #[inline(always)]
-unsafe fn flash_limit() -> u32 {
+unsafe fn flash_limit(is_584x: bool) -> u32 {
+    if is_584x {
+        return unsafe {
+            // 480 KiB, or ISP585's conservative 448 KiB while
+            // `RB_BOOT_LOADER` (`R8_GLOB_CFG_INFO` bit 5) is set.
+            if r8(GLOB_CFG_INFO) & 0x20 != 0 {
+                0x0007_0000
+            } else {
+                0x0007_8000
+            }
+        };
+    }
     let id = unsafe { r8(CHIP_ID) };
     if id == 0x71 || id == 0x91 {
         0x0003_0000 // CH571, CH591: 192 KiB
@@ -87,8 +114,12 @@ unsafe fn out(v: u8) {
 }
 
 #[inline(always)]
-unsafe fn addr(c: u8, mut a: u32) {
+unsafe fn addr(is_584x: bool, c: u8, mut a: u32) {
     unsafe {
+        // CH584X addresses CodeFlash at engine `CPU + 0x80000`.
+        if is_584x {
+            a += 0x0008_0000;
+        }
         if (c & 0xbf) != 0x0b {
             beg(6);
             end();
@@ -103,6 +134,19 @@ unsafe fn addr(c: u8, mut a: u32) {
                 break;
             }
         }
+    }
+}
+
+/// `0x0B` frame read: five address bytes (24-bit address plus two zero bytes).
+#[inline(always)]
+unsafe fn read_addr(c: u8, a: u32) {
+    unsafe {
+        beg(c);
+        out((a >> 16) as u8);
+        out((a >> 8) as u8);
+        out(a as u8);
+        out(0);
+        out(0);
     }
 }
 
@@ -169,7 +213,12 @@ unsafe fn lock() {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn init(addr: u32, _clk: u32, _fn_code: u32) -> u32 {
-    unsafe { if addr >= flash_limit() { 1 } else { 0 } }
+    let is_584x = unsafe { detect_584x() };
+    if addr >= unsafe { flash_limit(is_584x) } {
+        1
+    } else {
+        0
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -183,10 +232,10 @@ pub extern "C" fn uninit(_fn_code: u32) -> u32 {
 /// One erase command. `cmd` is `0x20` for a 4 KiB sector or `0xD8` for a
 /// 64 KiB block.
 #[inline(always)]
-unsafe fn erase_block(cmd: u8, at: u32) -> u32 {
+unsafe fn erase_block(is_584x: bool, cmd: u8, at: u32) -> u32 {
     unsafe {
         unlock_and_reset();
-        addr(cmd, at);
+        addr(is_584x, cmd, at);
         let st = wait();
         lock();
         if st == 0 { 1 } else { 0 }
@@ -195,18 +244,20 @@ unsafe fn erase_block(cmd: u8, at: u32) -> u32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn erase_sector(sector_addr: u32) -> u32 {
+    let is_584x = unsafe { detect_584x() };
     let aligned = sector_addr & 0x0fff_f000;
     unsafe {
-        if aligned >= flash_limit() {
+        if aligned >= flash_limit(is_584x) {
             return 1;
         }
-        erase_block(0x20, aligned)
+        erase_block(is_584x, 0x20, aligned)
     }
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn erase_all() -> u32 {
-    let limit = unsafe { flash_limit() };
+    let is_584x = unsafe { detect_584x() };
+    let limit = unsafe { flash_limit(is_584x) };
     let mut a = 0u32;
     while a < limit {
         // Erase 64 KiB blocks while a whole block is left, then the remainder
@@ -217,7 +268,7 @@ pub extern "C" fn erase_all() -> u32 {
         } else {
             (0x20, 0x1000)
         };
-        let r = unsafe { erase_block(cmd, a) };
+        let r = unsafe { erase_block(is_584x, cmd, a) };
         if r != 0 {
             return r;
         }
@@ -231,7 +282,8 @@ pub extern "C" fn program_page(dest: u32, size: u32, buf: *const u8) -> u32 {
     if size == 0 {
         return 0;
     }
-    let limit = unsafe { flash_limit() };
+    let is_584x = unsafe { detect_584x() };
+    let limit = unsafe { flash_limit(is_584x) };
     if dest >= limit || limit - dest < size || ((dest | size) & 3) != 0 {
         return 1;
     }
@@ -245,7 +297,7 @@ pub extern "C" fn program_page(dest: u32, size: u32, buf: *const u8) -> u32 {
             } else {
                 size - offset
             };
-            addr(0x02, dest + offset);
+            addr(is_584x, 0x02, dest + offset);
             let mut i = 0u32;
             while i < chunk {
                 let p = buf.add((offset + i) as usize);
@@ -262,4 +314,39 @@ pub extern "C" fn program_page(dest: u32, size: u32, buf: *const u8) -> u32 {
         lock();
         if ok { 0 } else { 1 }
     }
+}
+
+/// Read CodeFlash through the engine. A halted debug read of the CH5xx
+/// CodeFlash area returns a scrambled placeholder, so this is the `--verify`
+/// path for the CH584X entry.
+///
+/// Only `ch5xx-usr-flash-584x` declares `pc_read`; the shared entry does not,
+/// because a direct bus read of blank CodeFlash returns the `0xF3F9BDA9`
+/// sentinel and would silently "verify" erased space. Other parts get an
+/// error rather than that fallback.
+#[unsafe(no_mangle)]
+pub extern "C" fn read_flash(start: u32, size: u32, buf: *mut u8) -> u32 {
+    if size == 0 {
+        return 0;
+    }
+    let is_584x = unsafe { detect_584x() };
+    if !is_584x {
+        return 1;
+    }
+    let limit = unsafe { flash_limit(is_584x) };
+    if start >= limit || limit - start < size {
+        return 1;
+    }
+    unsafe {
+        unlock_and_reset();
+        read_addr(0x0b, start + 0x0008_0000);
+        let mut i = 0u32;
+        while i < size {
+            *buf.add(i as usize) = r#in();
+            i += 1;
+        }
+        end();
+        lock();
+    }
+    0
 }

@@ -7,6 +7,7 @@ SECTIONS {
     KEEP(*(.text.erase_sector))
     KEEP(*(.text.erase_all))
     KEEP(*(.text.program_page))
+    KEEP(*(.text.read_flash))
     *(.text .text.*)
   }
   .rodata : { *(.rodata .rodata.*) }

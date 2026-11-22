@@ -20,26 +20,93 @@ unify two ch32-metapac chip features, so the lib is duplicated.
 | `algos/l1`   | `flash_l1`       | `riscv32imac-unknown-none-elf`     | CH32L103                   |
 | `algos/h4`   | `flash_h4`       | `riscv32imac-unknown-none-elf`     | CH32H415/H416/H417         |
 | `algos/f1`          | `flash_v1`       | `thumbv7m-none-eabi`               | CH32F103 (Cortex-M3)       |
-| `algos-ch5xx/ch5xx` | `FLASH_ROM`      | `riscv32imac-unknown-none-elf`     | CH570/571/572/573, CH581/582/583/584/585, CH591/592 (PIC) |
-| `algos-ch5xx/ch569` | `FLASH_ROM`      | `riscv32imac-unknown-none-elf`     | CH565/CH569                |
+| `algos-ch5xx/ch5xx` | `FLASH_ROM`      | `riscv32imac-unknown-none-elf`     | CH570/571/572/573, CH581/582/583/584/585, CH591/592, CH584X (PIC CodeFlash + DataFlash) |
+| `algos-ch5xx/ch569` | `FLASH_ROM`      | `riscv32imac-unknown-none-elf`     | CH565/CH569 (CodeFlash + DataFlash) |
+| `algos-ch5xx/ch564` | `FLASH_ROM`      | `riscv32imac-unknown-none-elf`     | CH564 (192K/448K configurations, CodeFlash + DataFlash) |
+| `algos-ch5xx/ch595` | `FLASH_ROM`      | `riscv32imac-unknown-none-elf`     | CH595, CH596 (page-latch CodeFlash) |
 
 Each `algos/*` crate builds three binaries — `usr`, `sys`, `ob` — one per writable
-region. VND (vendor / ESIG) is read-only and not programmed.
+region (CH32 naming). VND (vendor / ESIG) is read-only and not programmed.
 
-`algos-ch5xx/ch5xx` is a standalone workspace crate that builds a single
-1024-byte position-independent `usr` (CodeFlash) binary shared across CH570,
-CH571, CH572, CH573, CH581, CH582, CH583, CH584, CH585, CH591, and CH592,
-enforcing the per-chip CodeFlash ceiling dynamically via `R8_CHIP_ID`
-(`0x40001041`).
-Note that CH595 uses a newer hardware pre-program/page-latch Flash controller
+`algos-ch5xx/ch5xx` is a standalone workspace crate. Its binaries follow the
+datasheet's user-area split: `usr-code` (用户应用程序存储区, `CodeFlash`) and
+`usr-data*` (用户非易失数据存储区, `DataFlash`). The probe-rs regions keep the
+datasheet's English names (`CodeFlash` / `DataFlash` / `BootLoader` /
+`InfoFlash`). `BootLoader` (24 KiB at `0x78000`) is mapped read-only and reads
+back correctly over the debug bus. The 8 KiB info block is split like the
+datasheet: `UserInfo` (`0x7E000..0x7F000`, tool-settable user config) and
+`InfoFlash` (`0x7F000..0x80000`, undocumented system area). Both are read-only;
+only a few words are programmed and the rest reads as the blank sentinel
+(`0xF3F9BDA9`, `0xF5F9BDA9` on CH57x/58x). There is no `boot` or `info` binary:
+neither area has an erase/write path.
+
+| Binary             | Region      | Frame address                        | Chips                                                       |
+| ------------------ | ----------- | ------------------------------------ | ----------------------------------------------------------- |
+| `usr-code`         | `CodeFlash` | absolute; `addr + 0x80000` on CH584X | CH570/571/572/573, CH581/582/583/584/585, CH591/592, CH584X |
+| `usr-data`         | `DataFlash` | `0x70000 + off`                      | CH571/CH573, CH581/CH584/CH585                              |
+| `usr-data-0x80000` | `DataFlash` | `0xF0000 + off`                      | CH582/CH583, CH591/CH592                                    |
+| `usr-data-584x`    | `DataFlash` | 0-based engine                       | CH584X                                                      |
+
+`usr-code` is position-independent and shared across the family; it enforces the
+per-chip CodeFlash ceiling dynamically via `R8_CHIP_ID` (`0x40001041`).
+CH584X shares `R8_CHIP_ID` (`0x92`) with CH581/CH584/CH592 but has 480 KiB of
+CodeFlash at a different engine frame address (`addr + 0x80000`). The basic
+chip ID is checked first, and only the `0x92` group reads the ISP585 model code
+`(*(uint32_t *)0x7F024 & 0x0F) == 0x08` to select the CH584X path; ISP585's
+conservative 448 KiB `RB_BOOT_LOADER` limit applies when `R8_GLOB_CFG_INFO`
+bit 5 is set. That discriminator is a Flash read, so it is checked at the top
+of every entry point, before `unlock_and_reset`: reading Flash between the
+unlock and the erase command leaves the CH592 engine busy forever. It is not
+cached in a `static mut`, because the linker would place that at an absolute
+RAM address while probe-rs loads this position-independent blob at the start of
+the target's RAM region (CH571/CH573 start at `0x20003800`).
+The DataFlash protocol is not a CodeFlash alias (256-byte `0x81` erase,
+byte-wise `0x02` program, `0x0B` engine reads).
+
+`usr-data` and `usr-data-0x80000` share `src/usr_data.rs` and differ only in
+whether the engine frame address includes the `0x80000` bit. `usr-data-584x`
+uses its own `src/usr_data_584x.rs`: CH584X addresses its 512 KiB DataFlash 0-based in the
+engine and erases in 4 KiB blocks, while probe-rs exposes it at the program-view
+base `0x80000`. That CH584X mapping is inferred from the ISP585 disassembly; no
+board has run it.
+
+The binaries are selected statically in the probe-rs target YAML because
+`R8_CHIP_ID` collides between the generations: `0x92` covers CH581 and CH584
+(no `0x80000` bit) as well as CH592 (`0x80000` set). CH584X also shares `0x92`
+and the WCH-Link device id with CH584, so `--chip CH584X` is required for the
+target memory map; both algorithms check `R8_CHIP_ID == 0x92` first and only
+then read the ISP585 model code at `0x7F024` (reserved on CH570/572). CH570/CH572
+have no DataFlash.
+
+CH595/CH596 use a newer hardware pre-program/erase/page-latch Flash controller
 at `0x40001800..0x40001820` (`CH59x_flash.c`) rather than the SPI-like
-`0x40001800..0x40001806` interface, CH586/CH587 have up to 960 KiB CodeFlash,
-and CH577/CH578/CH579 are Cortex-M0 parts, so they are not covered by
-`algos-ch5xx/ch5xx` (and can be added as sibling crates under `algos-ch5xx/`).
+`0x40001800..0x40001806` interface, so they live in their own crate. CH586/CH587
+have up to 960 KiB CodeFlash, and CH577/CH578/CH579 are Cortex-M0 parts; none
+of them are covered by `algos-ch5xx/ch5xx`.
 
-`algos-ch5xx/ch569` covers CH565/CH569 (448 KiB, 4 KiB sectors). Its flash
-window is in the SYS block (`0x40001014`/`18`/`1a`), not at `0x40001800`, and
-the algorithm is linked into RAMX at `0x20020008`.
+`algos-ch5xx/ch569` covers CH565/CH569 CodeFlash (448 KiB) and DataFlash
+(32 KiB at `0x70000`), both in 4 KiB sectors. Its `usr-code` and `usr-data` binaries
+share the SYS-block flash window (`0x40001014`/`18`/`1a`), start commands with
+`CTRL=7` rather than the CH57x/CH58x/CH59x `CTRL=5`, and are linked into RAMX
+at `0x20020008`. The engine address space is 32 KiB DataFlash at `0..0x8000`
+followed by CodeFlash at `0x8000..0x78000`, so `usr-code` sends `CPU + 0x8000` and
+`usr-data` sends `CPU - 0x70000` (`libISPEM569.a` does the same).
+
+`algos-ch5xx/ch564` covers CH564's 192 KiB and 448 KiB CodeFlash layouts plus
+the 32 KiB DataFlash at `0x30000`/`0x70000`. CH564's controller is at
+`0x40400018`/`0x4040001a`: erase/program frames use `CTRL=3` with a `6` prefix,
+reads use `CTRL=7`, and both modes add an 18-NOP delay after each access. The
+algorithms read InfoFlash `0x3007` at init to pick the memory configuration, so
+the same binaries serve both `CH564` and `CH564-512K`.
+
+`algos-ch5xx/ch595` covers CH595/CH596: 240 KiB CodeFlash at `0`, 2 KiB
+sectors, 256-byte page latch, and no user DataFlash. Programming is a hardware
+state machine (`CH59x_flash.c`): pre-program, erase, clear the page latch, load
+256 bytes through `R32_FLASH_DATA`, then start page program, polling
+`R32_FLASH_STATUS` bit 31/bit 19 for busy/ready. The safe-access signature opens
+`R32_GLOBAL_CONFIG = 0xE1` for the whole operation. The two parts have different
+`R8_CHIP_ID` values (`0x97`/`0x96`) but share the WCH-Link chip id `0xcb`, so
+probe-rs auto-selects `CH595`; use `--chip CH596` for CH596.
 
 ## Repo layout
 
@@ -55,7 +122,7 @@ flash-algorithms/
 │       ├── ch32-metapac/       # ← algo path dep target
 │       └── data/chips/*.json   # ← xtask reads these
 ├── algos/{common,v0,v00x,v1,v3,v4x7,l1,x0,h4,f1}/
-├── algos-ch5xx/ch5xx/          # standalone PIC flash algorithms for CH5xx families
+├── algos-ch5xx/{ch5xx,ch564,ch569,ch595}/  # standalone CH5xx flash algorithms
 └── xtask/                      # standalone crate, NOT in the algos workspace
 ```
 
