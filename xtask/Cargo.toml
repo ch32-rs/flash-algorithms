@@ -18,7 +18,7 @@ publish = false
 anyhow = "1"
 goblin = "0.10"
 indexmap = "2"
-probe-rs-target = { git = "https://github.com/ch32-rs/probe-rs", rev = "8bfc5b87e356934ef0af6ad3ee8f3f6162089327" }
+probe-rs-target = { git = "https://github.com/ch32-rs/probe-rs", rev = "b22cdd4adf8b75f97bd30ad2fb9e42fd726eaf7b" }
 scroll = "0.13"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
